@@ -6,6 +6,7 @@
    tests cover the four-element harmonic structure and explicit motifs.
 2. **M0.2:** shared harmonic context, scheduler, seeded instance state and
    generation, timestamped mock recording/replay and a reproducible CLI demo.
+   Implemented for fixed-tempo ahead-of-time mock composition; see [M0.2](m0-2.md).
 3. **M0.3:** versioned validated project/control files and semantic keyboard actions.
 4. **M0.4:** provisional SuperCollider adapter, native synth/effects and rendering.
 5. **M0.5:** Fedora Toolbox setup, playback/render and device validation instructions.
@@ -48,7 +49,8 @@ This is the smallest M0.1 slice, not the full representation described by the
 frozen architecture. Beat timing is supported; absolute seconds, proportional
 and event-relative timing need explicit types and resolution contexts in a
 follow-up. Metadata, harmonic/structural interpreters, mutable running state,
-seeded generation, and named references/project serialization remain pending.
+and named references/project serialization remain pending in the object model.
+Seeded demo generation and resolved-history serialization are provided by M0.2.
 No GUI, audio engine or new runtime dependencies have been added.
 
 The baseline package installs on Python 3.12 and its scaffold test passes.
@@ -57,7 +59,7 @@ architectural inconsistency or missing prerequisite blocks this slice; pytest
 is the only development extra. There is no CI workflow in the bootstrap.
 
 Before extending timing, agree how proportional values obtain their enclosing
-span and how event-relative references identify events. Before scheduling,
-define shared-context update boundaries and ordering of simultaneous events.
+span and how event-relative references identify events. M0.2 defines
+shared-context boundaries and simultaneous-event ordering in its contract.
 These are implementation questions within the frozen design, not proposed
 architecture changes.
