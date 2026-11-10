@@ -1,0 +1,12 @@
+schema_version = 1
+
+# Enter `key +` or `key -` in a session (line-oriented, Enter to submit).
+[bindings]
+"+" = "adjust composition.anchor 1"
+"-" = "adjust composition.anchor -1"
+"f" = "adjust transport.tempo_bpm 5"
+"s" = "adjust transport.tempo_bpm -5"
+"u" = "undo"
+"i" = "inspect"
+"g" = "generate"
+"q" = "quit"

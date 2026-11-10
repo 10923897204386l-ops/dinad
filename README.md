@@ -3,7 +3,7 @@
 DINAD is a programmable musical environment combining explicit composition and generative behaviour. Musical objects are reusable, relational, nested and interpreted dynamically; the same structure may become a motif, harmonic progression, arpeggio or large-scale form.
 
 ## Status
-Architecture concept frozen (2026-11-10). M0.1 has an initial headless object model and note interpreter. M0.2 adds a deterministic scheduler, shared harmonic context, seeded demo and mock recording/replay; see [CLI usage and contracts](docs/m0-2.md). Audio integration is still pending. See [implementation notes](docs/m0-implementation.md).
+Architecture concept frozen (2026-11-10). M0.1 has an initial headless object model and note interpreter. M0.2 adds a deterministic scheduler, shared harmonic context, seeded demo and mock recording/replay; see [CLI usage and contracts](docs/m0-2.md). M0.3 adds [validated TOML projects and keyboard command sessions](docs/m0-3.md). Audio integration is still pending. See [implementation notes](docs/m0-implementation.md).
 
 ## Principles
 - Python owns composition, objects, transformations, rules, scheduling intent, configuration and control surfaces.

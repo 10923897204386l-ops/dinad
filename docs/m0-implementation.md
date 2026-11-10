@@ -8,6 +8,8 @@
    generation, timestamped mock recording/replay and a reproducible CLI demo.
    Implemented for fixed-tempo ahead-of-time mock composition; see [M0.2](m0-2.md).
 3. **M0.3:** versioned validated project/control files and semantic keyboard actions.
+   Implemented for next-generation mock session settings; see [M0.3](m0-3.md).
+   Timed live control of an audio transport remains pending.
 4. **M0.4:** provisional SuperCollider adapter, native synth/effects and rendering.
 5. **M0.5:** Fedora Toolbox setup, playback/render and device validation instructions.
 

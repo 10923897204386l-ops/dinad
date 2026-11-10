@@ -3,9 +3,10 @@
 from dataclasses import dataclass, field
 from random import Random
 
+from dinad.config import Project
 from dinad.engine import Event, HarmonicContext, Part, schedule
 from dinad.interpreters import Note
-from dinad.objects import AnchorPitch, Element, MusicalObject, ObjectInstance, _finite
+from dinad.objects import AnchorPitch, Element, MusicalObject, ObjectInstance
 
 
 @dataclass
@@ -25,7 +26,8 @@ class VariationState:
 
 
 def compose(seed: int = 0, anchor: float = 48, tempo: float = 120) -> tuple[Event, ...]:
-    _finite(anchor, "anchor")
+    settings = Project(anchor=anchor, tempo=tempo, seed=seed)
+    anchor, tempo, seed = settings.anchor, settings.tempo, settings.seed
     harmony = MusicalObject(tuple(
         Element(AnchorPitch(interval), start=index * 4, duration=4)
         for index, interval in enumerate((0, 5, 9, 7))
