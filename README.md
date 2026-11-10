@@ -3,7 +3,7 @@
 DINAD is a programmable musical environment combining explicit composition and generative behaviour. Musical objects are reusable, relational, nested and interpreted dynamically; the same structure may become a motif, harmonic progression, arpeggio or large-scale form.
 
 ## Status
-Architecture concept frozen (2026-11-10). M0 exploratory prototype has **not** been implemented.
+Architecture concept frozen (2026-11-10). M0.1 has an initial headless object model and note interpreter. The composition engine and audio prototype are still pending. See [implementation notes](docs/m0-implementation.md).
 
 ## Principles
 - Python owns composition, objects, transformations, rules, scheduling intent, configuration and control surfaces.
