@@ -1,0 +1,17 @@
+[audio]
+backend = "auto"
+sample_rate = "auto"
+buffer_size = "auto"
+latency_policy = "balanced"
+
+[recording]
+format = "flac"
+capture_events = true
+
+[rendering]
+format = "wav"
+bit_depth = 32
+
+[interface]
+navigation = "vim"
+editor_key = "F12"
