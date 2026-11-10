@@ -12,8 +12,12 @@
    Timed live control of an audio transport remains pending.
 4. **M0.4:** provisional SuperCollider adapter, native synth/effects and rendering.
    Implemented with tested headless NRT rendering; see [M0.4](m0-4.md).
-   Live hardware timing and listening remain Fedora validation tasks.
+   Real-speaker playback and listening passed in M0.5; calibrated wired latency
+   remains unmeasured.
 5. **M0.5:** Fedora Toolbox setup, playback/render and device validation instructions.
+   Implemented as [Fedora validation](m0-5.md), read-only diagnostics and
+   [local audio results](m0-local-audio.md). M0.4 is integrated; wired latency
+   and sustained-load tests remain open.
 
 ## Current API example
 
