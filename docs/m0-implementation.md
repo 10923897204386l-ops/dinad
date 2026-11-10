@@ -11,6 +11,8 @@
    Implemented for next-generation mock session settings; see [M0.3](m0-3.md).
    Timed live control of an audio transport remains pending.
 4. **M0.4:** provisional SuperCollider adapter, native synth/effects and rendering.
+   Implemented with tested headless NRT rendering; see [M0.4](m0-4.md).
+   Live hardware timing and listening remain Fedora validation tasks.
 5. **M0.5:** Fedora Toolbox setup, playback/render and device validation instructions.
 
 ## Current API example
