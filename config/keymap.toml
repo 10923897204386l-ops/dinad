@@ -1,0 +1,7 @@
+[navigation]
+left = "h"
+down = "j"
+up = "k"
+right = "l"
+command = ":"
+cancel = "Escape"
