@@ -93,3 +93,26 @@ def test_reject_ambiguous_or_invalid_structure():
         ObjectReference("missing")
     with pytest.raises(ValueError, match="non-negative"):
         ObjectReference(MusicalObject(()), start=-1)
+
+
+def test_object_type_annotations_can_be_resolved():
+    from typing import get_type_hints
+
+    assert get_type_hints(MusicalObject)["elements"] == tuple[Element | ObjectReference, ...]
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"anchor": 1e308},
+    {"time_scale": 2},
+    {"time_scale": 1e-308},
+])
+def test_resolution_rejects_overflow_and_duration_underflow(kwargs):
+    duration = 1e-308 if kwargs.get("time_scale") == 1e-308 else 1e308
+    definition = MusicalObject((Element(AnchorPitch(1e308), duration=duration),))
+    with pytest.raises(ValueError, match="resolved"):
+        interpret_notes(ObjectInstance(definition, **kwargs))
+
+
+def test_unrepresentable_integer_has_clear_validation_error():
+    with pytest.raises(ValueError, match="finite number"):
+        AbsolutePitch(10 ** 1000)

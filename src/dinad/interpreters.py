@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from dinad.objects import (
-    AbsolutePitch, AnchorPitch, Element, MusicalObject, ObjectInstance,
+    AbsolutePitch, AnchorPitch, Element, MusicalObject, ObjectInstance, _finite,
 )
 
 
@@ -12,6 +12,13 @@ class Note:
     pitch: float
     start: float
     duration: float
+
+    def __post_init__(self) -> None:
+        _finite(self.pitch, "resolved pitch")
+        _finite(self.start, "resolved start")
+        _finite(self.duration, "resolved duration")
+        if self.start < 0 or self.duration <= 0:
+            raise ValueError("resolved start must be non-negative and duration must be positive")
 
 
 def interpret_notes(instance: ObjectInstance) -> tuple[Note, ...]:

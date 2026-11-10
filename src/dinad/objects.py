@@ -11,7 +11,13 @@ from math import isfinite
 
 
 def _finite(value: float, label: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) :
+        raise ValueError(f"{label} must be a finite number")
+    try:
+        finite = isfinite(value)
+    except OverflowError:
+        finite = False
+    if not finite:
         raise ValueError(f"{label} must be a finite number")
 
 
@@ -63,7 +69,7 @@ class Element:
 class MusicalObject:
     """Reusable ordered structure. Tuple order determines relational traversal."""
 
-    elements: tuple[Element | "ObjectReference", ...]
+    elements: tuple[Element | ObjectReference, ...]
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "elements", tuple(self.elements))
