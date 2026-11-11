@@ -1,0 +1,18 @@
+schema_version = 1
+
+# Times are relative seconds. Equal-time actions run in file order.
+[[actions]]
+seconds = 1
+command = "set composition.anchor 60"
+
+[[actions]]
+seconds = 2
+command = "set transport.tempo_bpm 90"
+
+[[actions]]
+seconds = 3
+command = "set generation.seed 7"
+
+[[actions]]
+seconds = 4
+command = "undo"

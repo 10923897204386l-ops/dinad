@@ -9,7 +9,7 @@
    Implemented for fixed-tempo ahead-of-time mock composition; see [M0.2](m0-2.md).
 3. **M0.3:** versioned validated project/control files and semantic keyboard actions.
    Implemented for next-generation mock session settings; see [M0.3](m0-3.md).
-   Timed live control of an audio transport remains pending.
+   M0.6 adds timestamped control capture; concurrent audio transport remains pending.
 4. **M0.4:** provisional SuperCollider adapter, native synth/effects and rendering.
    Implemented with tested headless NRT rendering; see [M0.4](m0-4.md).
    Real-speaker playback and listening passed in M0.5; calibrated wired latency
@@ -18,6 +18,10 @@
    Implemented as [Fedora validation](m0-5.md), read-only diagnostics and
    [local audio results](m0-local-audio.md). M0.4 is integrated; wired latency
    and sustained-load tests remain open.
+6. **M0.6:** [timed controls and resolved replay](m0-6.md). Deterministic TOML
+   timelines and monotonic keyboard capture apply settings to future onsets and
+   save resolved histories for existing backends. Concurrent audio feedback and
+   audio-clock synchronization remain pending.
 
 ## Current API example
 
