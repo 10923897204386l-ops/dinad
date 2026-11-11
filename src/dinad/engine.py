@@ -72,13 +72,19 @@ class MockBackend(StagedLifecycle):
     version = "mock-v1"
     descriptor = ModuleDescriptor(
         identifier="dinad.mock", version=version, kind=ModuleKind.PERFORMANCE,
-        capabilities=frozenset({Capability.STAGED_NOTES}),
+        capabilities=frozenset({Capability.STAGED_NOTES, Capability.CONTINUOUS_TRANSPORT}),
         limitations=("Records resolved notes only; produces no audio.",),
     )
 
     def __init__(self) -> None:
         super().__init__()
         self._events: list[Event] = []
+
+    def live_output(self, **options):
+        from dinad.transport import SilentOutput
+
+        self._require_ready()
+        return SilentOutput()
 
     @property
     def events(self) -> tuple[Event, ...]:

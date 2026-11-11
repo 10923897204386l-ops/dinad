@@ -3,10 +3,13 @@
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Protocol, Self, TypeAlias, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, Self, TypeAlias, runtime_checkable
 
 from dinad.events import Event
 from dinad.objects import _finite
+
+if TYPE_CHECKING:
+    from dinad.transport import LiveOutput
 
 
 class ModuleKind(str, Enum):
@@ -20,6 +23,7 @@ class Capability(str, Enum):
     STAGED_NOTES = "staged_notes"
     OFFLINE_RENDER = "offline_render"
     SCHEDULED_PLAYBACK = "scheduled_playback"
+    CONTINUOUS_TRANSPORT = "continuous_transport"
     PARAMETER_READ = "parameter_read"
     PARAMETER_WRITE = "parameter_write"
     STATE_SAVE = "state_save"
@@ -321,3 +325,9 @@ class OfflineRenderer(ModuleAdapter, Protocol):
 @runtime_checkable
 class ScheduledPlayer(ModuleAdapter, Protocol):
     def play(self, work: Path, **options) -> dict: ...
+
+
+@runtime_checkable
+class LiveProvider(ModuleAdapter, Protocol):
+    def live_output(self, *, exclusive: bool, port: int, sclang: str,
+                    library: Path | None) -> "LiveOutput": ...

@@ -48,6 +48,21 @@ class Command:
     arguments: tuple
 
 
+def voice_arguments(event: Event, settings: Settings, node: int) -> tuple:
+    if node >= 2**31:
+        raise ValueError("too many voices for SuperCollider node IDs")
+    if event.instrument not in INSTRUMENTS:
+        raise ValueError(f"unsupported SuperCollider instrument: {event.instrument}")
+    try:
+        frequency = 440 * 2 ** ((event.pitch - 69) / 12)
+    except OverflowError as exc:
+        raise ValueError("pitch cannot be represented as a frequency") from exc
+    if not math.isfinite(frequency) or not 0 < frequency < settings.sample_rate / 2:
+        raise ValueError("pitch frequency must be positive and below sample-rate Nyquist")
+    return ("/s_new", INSTRUMENTS[event.instrument], node, 2, 1001,
+            "freq", frequency, "out", 16)
+
+
 def compile_events(events: tuple[Event, ...], settings: Settings) -> tuple[Command, ...]:
     """Validate complete history, then produce ordered setup/on/off/cleanup commands.
 
@@ -59,14 +74,7 @@ def compile_events(events: tuple[Event, ...], settings: Settings) -> tuple[Comma
     commands = [Command(0, ("/g_new", 1000, 0, 0)),
                 Command(0, ("/s_new", "dinad_effects", 1001, 1, 1000))]
     for index, event in enumerate(events):
-        if event.instrument not in INSTRUMENTS:
-            raise ValueError(f"unsupported SuperCollider instrument: {event.instrument}")
-        try:
-            frequency = 440 * 2 ** ((event.pitch - 69) / 12)
-        except OverflowError as exc:
-            raise ValueError("pitch cannot be represented as a frequency") from exc
-        if not math.isfinite(frequency) or not 0 < frequency < settings.sample_rate / 2:
-            raise ValueError("pitch frequency must be positive and below sample-rate Nyquist")
+        voice = voice_arguments(event, settings, 1002 + index)
         start = event.time + settings.preroll
         end = event.time + event.duration + settings.preroll
         _finite(start, "scheduled start")
@@ -77,11 +85,8 @@ def compile_events(events: tuple[Event, ...], settings: Settings) -> tuple[Comma
         if end <= start:
             raise ValueError("event duration is too small for its scheduled timestamp")
         node = 1002 + index
-        if node >= 2**31:
-            raise ValueError("too many voices for SuperCollider node IDs")
         commands.extend((
-            Command(start, ("/s_new", INSTRUMENTS[event.instrument], node, 2, 1001,
-                            "freq", frequency, "out", 16)),
+            Command(start, voice),
             Command(end, ("/n_set", node, "gate", 0)),
         ))
     end = max((event.time + event.duration for event in events), default=0)
@@ -395,7 +400,8 @@ class SuperColliderBackend(StagedLifecycle):
     descriptor = ModuleDescriptor(
         identifier="dinad.supercollider", version=version, kind=ModuleKind.INSTRUMENT,
         capabilities=frozenset({Capability.STAGED_NOTES, Capability.OFFLINE_RENDER,
-                                Capability.SCHEDULED_PLAYBACK, Capability.PARAMETER_READ}),
+                                Capability.SCHEDULED_PLAYBACK, Capability.CONTINUOUS_TRANSPORT,
+                                Capability.PARAMETER_READ}),
         parameters=(
             ParameterDescriptor("sample_rate", "Requested sample rate", ParameterType.INTEGER,
                                 48000, 8000, 192000, "Hz", readable=True),
@@ -405,12 +411,14 @@ class SuperColliderBackend(StagedLifecycle):
                                 0.1, 0.05, 5, "seconds", readable=True),
         ),
         dependencies=(
-            Dependency("sclang", frozenset({Capability.OFFLINE_RENDER, Capability.SCHEDULED_PLAYBACK})),
+            Dependency("sclang", frozenset({Capability.OFFLINE_RENDER, Capability.SCHEDULED_PLAYBACK,
+                                            Capability.CONTINUOUS_TRANSPORT})),
             Dependency("scsynth", frozenset({Capability.OFFLINE_RENDER})),
             Dependency("exclusive prebooted SuperCollider server", frozenset({Capability.SCHEDULED_PLAYBACK})),
+            Dependency("exclusive local TCP SuperCollider server", frozenset({Capability.CONTINUOUS_TRANSPORT})),
         ),
         audio_ports=(AudioPort("master", "output", 2),),
-        limitations=("Stages complete schedules; no rolling transport or live parameter writes.",
+        limitations=("Supports staged playback and continuous note scheduling; settings are read-only at runtime.",
                      "Parameters describe immutable DINAD adapter settings, not discovered plugin controls.",
                      "Server ownership, rate and routing must be established externally.",
                      "No plugin hosting, native editors, preset or state recall support."),
@@ -429,6 +437,14 @@ class SuperColliderBackend(StagedLifecycle):
         self._require_ready()
         compile_events((event,), self.settings)
         self._history.submit(event)
+
+    def live_output(self, *, exclusive: bool, port: int, sclang: str, library: Path | None):
+        from dinad.live_sc import SuperColliderLive
+
+        self._require_ready()
+        if not exclusive:
+            raise ValueError("SuperCollider live transport requires --exclusive-server")
+        return SuperColliderLive(port=port, settings=self.settings, sclang=sclang, library=library)
 
     def get_parameter(self, native_id: str) -> ParameterValue:
         self.descriptor.require(Capability.PARAMETER_READ)

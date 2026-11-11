@@ -15,7 +15,7 @@ import time
 
 from dinad.config import PARAMETERS, Profile, Project, load_profile, load_project
 from dinad.controls import Session
-from dinad.execution import play_history, render_history, replay_history
+from dinad.execution import live_transport, play_history, render_history, replay_history
 from dinad.recording import decode
 from dinad.registry import BUILTINS, load_module_config
 
@@ -76,12 +76,8 @@ def _save_new(path: Path, text: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def _capture(performance, output: Path) -> int:
-    """Timestamp complete input lines; a daemon reader permits automatic finish."""
-    if output.exists() or not output.parent.is_dir():
-        raise ValueError("capture requires a new output in an existing directory")
+def _read_input(origin: float = 0.) -> queue.Queue:
     incoming = queue.Queue()
-    origin = time.monotonic()
 
     def read():
         try:
@@ -103,6 +99,15 @@ def _capture(performance, output: Path) -> int:
             incoming.put((time.monotonic() - origin, exc))
 
     threading.Thread(target=read, daemon=True).start()
+    return incoming
+
+
+def _capture(performance, output: Path) -> int:
+    """Timestamp complete input lines; a daemon reader permits automatic finish."""
+    if output.exists() or not output.parent.is_dir():
+        raise ValueError("capture requires a new output in an existing directory")
+    origin = time.monotonic()
+    incoming = _read_input(origin)
     print("Capturing 16 beats. Enter set/adjust/key/undo/inspect; quit or EOF stops. "
           "Save then render/play the captured history.", file=sys.stderr)
     failed = False
@@ -142,6 +147,60 @@ def _capture(performance, output: Path) -> int:
     return 1 if failed else 0
 
 
+def _live(transport) -> int:
+    incoming = _read_input()
+    print("Live session ready. Enter start, stop, replace PATH, save PATH, "
+          "set/adjust/key/undo/inspect, or quit.", flush=True)
+    failed = False
+    try:
+        while True:
+            try:
+                if transport.running and time.monotonic() >= transport.deadline - transport.lead:
+                    transport.advance()
+                    continue
+                timeout = max(0., transport.deadline - transport.lead - time.monotonic()) if transport.running else None
+                try:
+                    received, line = incoming.get(timeout=timeout)
+                except queue.Empty:
+                    continue
+                if isinstance(line, Exception):
+                    raise SystemExit(f"live input failed: {line}")
+                if not line:
+                    break
+                tokens = shlex.split(line)
+                if not tokens:
+                    continue
+                if tokens == ["start"]:
+                    transport.start()
+                    print("Started", flush=True)
+                elif tokens == ["stop"]:
+                    transport.stop()
+                    print("Stopped", flush=True)
+                elif tokens[0] in ("replace", "save"):
+                    if len(tokens) != 2:
+                        raise ValueError(f"expected {tokens[0]} PATH")
+                    path = Path(tokens[1])
+                    if tokens[0] == "replace":
+                        transport.replace_project(load_project(path))
+                        print("Project replaced", flush=True)
+                    else:
+                        _save_new(path, transport.recording())
+                        print("Take saved", flush=True)
+                else:
+                    result = transport.control(line, received)
+                    if result == "quit":
+                        break
+                    print(result, flush=True)
+            except (ValueError, OSError, OverflowError, RuntimeError) as exc:
+                print(f"error: {exc}", file=sys.stderr, flush=True)
+                failed = True
+    except KeyboardInterrupt:
+        pass
+    finally:
+        transport.stop()
+    return int(failed)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -172,6 +231,16 @@ def main() -> int:
         timed.add_argument("output", type=Path, help="new resolved recording; never overwrites")
         timed.add_argument("--project", type=Path)
         timed.add_argument("--profile", type=Path)
+    live = commands.add_parser("live", help="loop the composition with interactive timed controls")
+    live.add_argument("--project", type=Path)
+    live.add_argument("--profile", type=Path)
+    live.add_argument("--backend", choices=("mock", "supercollider"))
+    live.add_argument("--modules", type=Path, help="DINAD module configuration")
+    live.add_argument("--exclusive-server", action="store_true")
+    live.add_argument("--port", type=int, default=57110, help="local SuperCollider TCP port")
+    live.add_argument("--sample-rate", type=int)
+    live.add_argument("--sclang", default="sclang")
+    live.add_argument("--library", type=Path)
     for name in ("render", "play"):
         audio = commands.add_parser(name, help="SuperCollider offline WAV render" if name == "render"
                                     else "submit to an exclusive running SuperCollider server")
@@ -196,7 +265,14 @@ def main() -> int:
     try:
         module = (load_module_config(args.modules).operations.get(args.command)
                   if getattr(args, "modules", None) else None)
-        if args.command == "modules":
+        if args.command == "live":
+            project = load_project(args.project) if args.project else Project()
+            profile = load_profile(args.profile) if args.profile else Profile()
+            return _live(live_transport(project, profile, backend=args.backend,
+                                        exclusive=args.exclusive_server, port=args.port,
+                                        sample_rate=args.sample_rate, sclang=args.sclang,
+                                        library=args.library, module=module))
+        elif args.command == "modules":
             print(json.dumps([asdict(item) for item in BUILTINS.descriptors], default=sorted, indent=2))
         elif args.command == "validate-modules":
             config = load_module_config(args.config)
