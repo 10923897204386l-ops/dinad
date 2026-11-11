@@ -117,10 +117,34 @@ class Transport:
         self.pattern = pattern
         if self.running and len(self.session.changes) != count:
             self.take_project = self.session.project
-            self.actions.append({**asdict(self.session.changes[-1]),
+            self.actions.append({**asdict(self.session.changes[-1]), "sequence": len(self.actions),
                                  "received_seconds": max(0., (self.clock() if received is None else received) - self.origin),
                                  "effective_seconds": self.onset, "beat": self.tick / 2})
         return result
+
+    def prepare_edit(self, project: Project, profile: Profile) -> Callable[[], None]:
+        """Validate a full edit and return its in-memory commit for this scheduler turn."""
+        pattern = self._pattern(project)
+        session = Session(project, profile)
+        old = self.session.project.snapshot()
+        changes = []
+        if self.running:
+            received = max(0., self.clock() - self.origin)
+            for identifier, value in project.snapshot().items():
+                if value != old[identifier]:
+                    changes.append({"sequence": len(self.actions) + len(changes), "kind": "config",
+                                    "parameter": identifier, "old": old[identifier], "new": value,
+                                    "received_seconds": received, "effective_seconds": self.onset,
+                                    "beat": self.tick / 2})
+
+        def apply() -> None:
+            self.session = session
+            self.pattern = pattern
+            if self.running:
+                self.take_project = project
+                self.actions.extend(changes)
+
+        return apply
 
     def replace_project(self, project: Project) -> None:
         pattern = self._pattern(project)

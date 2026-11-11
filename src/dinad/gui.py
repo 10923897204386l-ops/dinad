@@ -1,0 +1,330 @@
+"""Optional DINAD Qt Widgets presentation layer."""
+
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from queue import Empty
+import re
+import shlex
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor, QFontDatabase, QKeySequence, QShortcut, QSyntaxHighlighter, QTextCharFormat
+from PySide6.QtWidgets import (
+    QApplication, QComboBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
+)
+
+from dinad.config import PARAMETERS
+from dinad.editor import Document, EditorSession, stage_edit
+from dinad.execution import live_transport
+from dinad.panel_worker import PanelWorker
+
+
+class TomlHighlight(QSyntaxHighlighter):
+    tokens = re.compile(
+        r'(?P<string>"(?:\\.|[^"\\])*"|\x27[^\x27]*\x27)|(?P<comment>\#.*$)'
+        r'|(?P<table>^\s*\[+[^\]]+\]+)|(?P<value>\b(?:true|false|\d[\d_.eE+-]*)\b)'
+        r'|(?P<key>[\w.-]+)(?=\s*=)'
+    )
+    colors = {"string": "#26774c", "comment": "#747474", "table": "#6045a4",
+              "value": "#955022", "key": "#205b9b"}
+
+    def highlightBlock(self, text):
+        for match in self.tokens.finditer(text):
+            style = QTextCharFormat()
+            style.setForeground(QColor(self.colors[match.lastgroup]))
+            start = len(text[:match.start()].encode("utf-16-le")) // 2
+            length = len(match[0].encode("utf-16-le")) // 2
+            self.setFormat(start, length, style)
+
+
+class Window(QMainWindow):
+    def __init__(self, worker: PanelWorker):
+        super().__init__()
+        self.worker = worker
+        self.state = worker.initial
+        self.file_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dinad-file")
+        self.future = None
+        self.pending = None
+        self.closing = False
+        self.previous_focus = None
+        self.kind = "project"
+        self.setWindowTitle("DINAD")
+        self.resize(760, 490)
+        self.panel = QWidget()
+        self.setCentralWidget(self.panel)
+        layout = QVBoxLayout(self.panel)
+        self.project_name = QLabel()
+        self.transport_status = QLabel()
+        layout.addWidget(self.project_name)
+        layout.addWidget(self.transport_status)
+        buttons = QHBoxLayout()
+        self.start_button = QPushButton("Start")
+        self.stop_button = QPushButton("Stop")
+        self.editor_button = QPushButton("Configuration  F12")
+        for button in (self.start_button, self.stop_button, self.editor_button):
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+        fields = QFormLayout()
+        self.fields = {}
+        for identifier, descriptor in PARAMETERS.items():
+            field = QLineEdit()
+            field.returnPressed.connect(lambda key=identifier: self._control(key))
+            fields.addRow(descriptor.label, field)
+            self.fields[identifier] = field
+        self.profile_key = QLineEdit()
+        self.profile_key.setPlaceholderText("Enter a key from the loaded profile")
+        self.profile_key.returnPressed.connect(self._profile_control)
+        fields.addRow("Profile key", self.profile_key)
+        layout.addLayout(fields)
+        layout.addStretch()
+        self.status = QLabel("Ready")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+
+        self.overlay = QFrame(self.panel)
+        self.overlay.setFrameShape(QFrame.Shape.StyledPanel)
+        self.overlay.setAutoFillBackground(True)
+        editing = QVBoxLayout(self.overlay)
+        toolbar = QHBoxLayout()
+        self.files = QComboBox()
+        self.files.addItems(self.state.documents)
+        self.save_button = QPushButton("Save & apply")
+        self.reload_button = QPushButton("Reload")
+        for widget in (self.files, self.save_button, self.reload_button):
+            toolbar.addWidget(widget)
+        editing.addLayout(toolbar)
+        self.path = QLabel()
+        self.path.setWordWrap(True)
+        editing.addWidget(self.path)
+        self.editor = QPlainTextEdit()
+        self.editor.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.highlighter = TomlHighlight(self.editor.document())
+        editing.addWidget(self.editor)
+        self.diagnostic = QLabel()
+        self.diagnostic.setWordWrap(True)
+        for label in (self.project_name, self.path, self.status, self.diagnostic):
+            label.setTextFormat(Qt.TextFormat.PlainText)
+        editing.addWidget(self.diagnostic)
+        self.overlay.hide()
+        self._show_document()
+        self.editor.textChanged.connect(self._update_dirty)
+        self.files.currentTextChanged.connect(self._switch_document)
+        self.save_button.clicked.connect(self._save)
+        self.reload_button.clicked.connect(self._reload)
+        self.start_button.clicked.connect(self._start)
+        self.stop_button.clicked.connect(self._stop)
+        self.editor_button.clicked.connect(self.toggle_editor)
+        self.shortcuts = [
+            QShortcut(QKeySequence("F12"), self, activated=self.toggle_editor),
+            QShortcut(QKeySequence.StandardKey.Save, self, activated=self._save),
+            QShortcut(QKeySequence("Ctrl+Space"), self, activated=self._toggle_transport),
+        ]
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._poll)
+        self.timer.start(20)
+        self._update_panel()
+        worker.thread.start()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "overlay"):
+            self.overlay.setGeometry(0, 0, self.panel.width(), int(self.panel.height() * .82))
+
+    def toggle_editor(self):
+        if self.overlay.isVisible():
+            self.overlay.hide()
+            self._update_panel()
+            if self.previous_focus:
+                self.previous_focus.setFocus()
+        else:
+            self.previous_focus = self.focusWidget()
+            self.overlay.setGeometry(0, 0, self.panel.width(), int(self.panel.height() * .82))
+            self.overlay.show()
+            self.overlay.raise_()
+            self._update_panel()
+            self.editor.setFocus()
+
+    @property
+    def dirty(self):
+        return self.editor.toPlainText() != self.state.documents[self.kind].text
+
+    @property
+    def busy(self):
+        return self.future is not None or self.pending is not None
+
+    def _update_dirty(self):
+        suffix = " • Unsaved changes" if self.dirty else ""
+        self.path.setText(str(self.state.documents[self.kind].path) + suffix)
+
+    def _show_document(self):
+        self.editor.setPlainText(self.state.documents[self.kind].text)
+        self.diagnostic.clear()
+        self._update_dirty()
+
+    def _discard_allowed(self):
+        return not self.dirty or QMessageBox.question(
+            self, "Discard edits?", "Discard the unsaved changes in this buffer?",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        ) == QMessageBox.StandardButton.Discard
+
+    def _switch_document(self, kind):
+        if kind == self.kind:
+            return
+        if not self._discard_allowed():
+            self.files.blockSignals(True)
+            self.files.setCurrentText(self.kind)
+            self.files.blockSignals(False)
+            return
+        self.kind = kind
+        self._show_document()
+
+    def _update_panel(self):
+        self.project_name.setText(f"Loop composition · {self.state.documents['project'].path.name}")
+        self.transport_status.setText("Playing" if self.state.running else "Stopped")
+        enabled = not self.busy and not self.closing
+        panel_enabled = enabled and not self.overlay.isVisible()
+        self.start_button.setEnabled(panel_enabled and not self.state.running)
+        self.stop_button.setEnabled(panel_enabled and self.state.running)
+        self.editor_button.setEnabled(panel_enabled)
+        self.files.setEnabled(enabled)
+        self.save_button.setEnabled(enabled)
+        self.reload_button.setEnabled(enabled)
+        self.editor.setReadOnly(not enabled)
+        self.profile_key.setEnabled(panel_enabled)
+        values = self.state.project.snapshot()
+        for identifier, field in self.fields.items():
+            field.setEnabled(panel_enabled)
+            field.setText(str(values[identifier]))
+
+    def _submit(self, operation, command):
+        if self.busy or self.closing:
+            return
+        self.pending = operation
+        self.worker.commands.put_nowait(command)
+        self._update_panel()
+
+    def _control(self, identifier):
+        value = self.fields[identifier].text()
+        def apply(model):
+            model.transport.control(f"set {identifier} {value}")
+            return f"{PARAMETERS[identifier].label} applied"
+        self._submit("control", apply)
+
+    def _profile_control(self):
+        key = self.profile_key.text().strip()
+        if key:
+            self._submit("profile key", lambda model: model.transport.control(f"key {shlex.quote(key)}"))
+            self.profile_key.clear()
+
+    def _start(self):
+        def start(model):
+            model.transport.start()
+            return "Started"
+        self._submit("start", start)
+
+    def _stop(self):
+        def stop(model):
+            model.transport.stop()
+            return "Stopped"
+        self._submit("stop", stop)
+
+    def _toggle_transport(self):
+        self._stop() if self.state.running else self._start()
+
+    def _save(self):
+        if not self.overlay.isVisible() or self.busy or self.closing:
+            return
+        self.diagnostic.setText("Validating…")
+        self.future = self.file_jobs.submit(stage_edit, self.state.documents[self.kind], self.editor.toPlainText())
+        self._update_panel()
+
+    def _reload(self):
+        if self.busy or not self._discard_allowed():
+            return
+        document = self.state.documents[self.kind]
+
+        def reload(model):
+            model.documents[document.kind] = Document.read(document.kind, document.path)
+            return "Reloaded from disk. Ctrl+S applies the file to the session."
+
+        self._submit("reload", reload)
+
+    def _error(self, message, location=None):
+        if location:
+            line, column = location
+            message = f"Line {line}, column {column} · {message}"
+            block = self.editor.document().findBlockByNumber(line - 1)
+            if block.isValid():
+                cursor = self.editor.textCursor()
+                offset = len(block.text()[:column - 1].encode("utf-16-le")) // 2
+                cursor.setPosition(block.position() + offset)
+                self.editor.setTextCursor(cursor)
+                self.editor.centerCursor()
+        self.diagnostic.setText(message)
+        self.status.setText(message)
+
+    def _poll(self):
+        if self.future is not None and self.future.done():
+            future, self.future = self.future, None
+            try:
+                edit = future.result()
+            except (OSError, ValueError, RuntimeError) as exc:
+                self._error(str(exc), getattr(exc, "location", None))
+                self._update_panel()
+            else:
+                self._submit("save", lambda model: model.apply(edit))
+        while True:
+            try:
+                result = self.worker.results.get_nowait()
+            except Empty:
+                break
+            self.state = result
+            self.status.setText(result.message if len(result.message) <= 500 else result.message[:497] + "…")
+            if result.response:
+                operation, self.pending = self.pending, None
+                if operation == "profile key" and not result.error and result.message == "quit":
+                    self.close()
+                if operation in ("save", "reload"):
+                    if result.error:
+                        self._error(result.message, result.location)
+                    else:
+                        self._show_document()
+                        self.diagnostic.setText(result.message)
+            self._update_panel()
+        if self.closing and not self.worker.thread.is_alive():
+            self.close()
+
+    def closeEvent(self, event):
+        if self.closing and not self.worker.thread.is_alive():
+            self.file_jobs.shutdown(wait=False)
+            self.timer.stop()
+            event.accept()
+            return
+        event.ignore()
+        if self.busy:
+            self.status.setText("An operation is in progress")
+            return
+        if not self.closing and self._discard_allowed():
+            self.closing = True
+            self.worker.closing.set()
+            self._update_panel()
+
+
+def launch(args) -> int:
+    documents = {"project": Document.read("project", args.project)}
+    for kind in ("profile", "modules"):
+        path = getattr(args, kind)
+        if path is not None:
+            documents[kind] = Document.read(kind, path)
+
+    def factory(project, profile, module):
+        return live_transport(project, profile, backend=args.backend, exclusive=args.exclusive_server,
+                              port=args.port, sample_rate=args.sample_rate, sclang=args.sclang,
+                              library=args.library, module=module)
+
+    worker = PanelWorker(EditorSession(documents, factory))
+    app = QApplication.instance() or QApplication(["DINAD"])
+    window = Window(worker)
+    window.show()
+    return app.exec()
