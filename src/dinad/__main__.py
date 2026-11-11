@@ -15,7 +15,7 @@ import time
 
 from dinad.config import PARAMETERS, Profile, Project, load_profile, load_project
 from dinad.controls import Session
-from dinad.engine import MockBackend, replay
+from dinad.execution import play_history, render_history, replay_history
 from dinad.recording import decode
 
 
@@ -198,26 +198,21 @@ def main() -> int:
             _save_new(args.output, performance.recording())
             print(f"Saved timed performance to {args.output}")
         elif args.command in ("render", "play"):
-            from dinad.supercollider import Settings, SuperColliderBackend
-
             events = decode(args.recording.read_text(encoding="utf-8"))
-            settings = Settings(sample_rate=args.sample_rate, tail=args.tail)
-            backend = SuperColliderBackend(settings)
-            replay(events, backend)
-            common = dict(sclang=args.sclang, library=args.library, timeout=args.timeout)
+            common = dict(sample_rate=args.sample_rate, tail=args.tail, sclang=args.sclang,
+                          library=args.library, timeout=args.timeout)
             if args.command == "render":
-                result = backend.render(args.output, scsynth=args.scsynth,
-                                plugins=args.plugins, **common)
+                result = render_history(events, args.output, scsynth=args.scsynth,
+                                        plugins=args.plugins, **common)
             else:
-                result = backend.play(args.output, host=args.host, port=args.port,
-                              lookahead=args.lookahead, exclusive=args.exclusive_server, **common)
+                result = play_history(events, args.output, host=args.host, port=args.port,
+                                      lookahead=args.lookahead, exclusive=args.exclusive_server, **common)
             print(json.dumps(result, indent=2))
         elif args.command == "parameters":
             print(json.dumps({key: asdict(value) for key, value in PARAMETERS.items()}, indent=2))
         elif args.command == "replay":
-            backend = MockBackend()
-            replay(decode(args.recording.read_text(encoding="utf-8")), backend)
-            print(f"Replayed {len(backend.events)} resolved events through {backend.version}.")
+            count, version = replay_history(decode(args.recording.read_text(encoding="utf-8")))
+            print(f"Replayed {count} resolved events through {version}.")
         else:
             project = load_project(args.project) if args.project else Project()
             if args.command == "demo":

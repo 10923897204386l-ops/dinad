@@ -16,6 +16,10 @@ import tempfile
 from dinad import __version__
 from dinad.engine import Event, MockBackend, replay
 from dinad.objects import _finite
+from dinad.modules import (
+    AudioPort, Capability, Dependency, ModuleDescriptor, ModuleKind,
+    ParameterDescriptor, ParameterType, ParameterValue, StagedLifecycle,
+)
 
 
 INSTRUMENTS = {"drone": "dinad_drone", "pad": "dinad_pad",
@@ -380,7 +384,7 @@ def play(events: tuple[Event, ...], work: Path, settings: Settings = Settings(),
             "note": "voice lifecycle completed; listening/device quality not established"}
 
 
-class SuperColliderBackend:
+class SuperColliderBackend(StagedLifecycle):
     """Backend protocol adapter: stage events, then explicitly render or play.
 
     submit never starts a process or touches audio; this preserves ahead-of-time
@@ -388,8 +392,32 @@ class SuperColliderBackend:
     """
 
     version = "supercollider-v1"
+    descriptor = ModuleDescriptor(
+        identifier="dinad.supercollider", version=version, kind=ModuleKind.INSTRUMENT,
+        capabilities=frozenset({Capability.STAGED_NOTES, Capability.OFFLINE_RENDER,
+                                Capability.SCHEDULED_PLAYBACK, Capability.PARAMETER_READ}),
+        parameters=(
+            ParameterDescriptor("sample_rate", "Requested sample rate", ParameterType.INTEGER,
+                                48000, 8000, 192000, "Hz", readable=True),
+            ParameterDescriptor("tail", "Scheduled effect tail", ParameterType.FLOAT,
+                                2, 0.5, 60, "seconds", readable=True),
+            ParameterDescriptor("preroll", "Score preroll", ParameterType.FLOAT,
+                                0.1, 0.05, 5, "seconds", readable=True),
+        ),
+        dependencies=(
+            Dependency("sclang", frozenset({Capability.OFFLINE_RENDER, Capability.SCHEDULED_PLAYBACK})),
+            Dependency("scsynth", frozenset({Capability.OFFLINE_RENDER})),
+            Dependency("exclusive prebooted SuperCollider server", frozenset({Capability.SCHEDULED_PLAYBACK})),
+        ),
+        audio_ports=(AudioPort("master", "output", 2),),
+        limitations=("Stages complete schedules; no rolling transport or live parameter writes.",
+                     "Parameters describe immutable DINAD adapter settings, not discovered plugin controls.",
+                     "Server ownership, rate and routing must be established externally.",
+                     "No plugin hosting, native editors, preset or state recall support."),
+    )
 
     def __init__(self, settings: Settings = Settings()) -> None:
+        super().__init__()
         self.settings = settings
         self._history = MockBackend()
 
@@ -398,11 +426,23 @@ class SuperColliderBackend:
         return self._history.events
 
     def submit(self, event: Event) -> None:
+        self._require_ready()
         compile_events((event,), self.settings)
         self._history.submit(event)
 
+    def get_parameter(self, native_id: str) -> ParameterValue:
+        self.descriptor.require(Capability.PARAMETER_READ)
+        self.descriptor.parameter(native_id)
+        return getattr(self.settings, native_id)
+
+    def close(self) -> None:
+        self._history.close()
+        super().close()
+
     def render(self, output: Path, **kwargs) -> dict:
+        self._require_ready()
         return render(self.events, output, self.settings, **kwargs)
 
     def play(self, work: Path, **kwargs) -> dict:
+        self._require_ready()
         return play(self.events, work, self.settings, **kwargs)
