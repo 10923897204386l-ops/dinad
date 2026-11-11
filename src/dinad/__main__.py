@@ -241,6 +241,16 @@ def main() -> int:
     live.add_argument("--sample-rate", type=int)
     live.add_argument("--sclang", default="sclang")
     live.add_argument("--library", type=Path)
+    gui = commands.add_parser("gui", help="open the DINAD Qt Widgets performance panel")
+    gui.add_argument("--project", type=Path, required=True)
+    gui.add_argument("--profile", type=Path)
+    gui.add_argument("--modules", type=Path)
+    gui.add_argument("--backend", choices=("mock", "supercollider"))
+    gui.add_argument("--exclusive-server", action="store_true")
+    gui.add_argument("--port", type=int, default=57110)
+    gui.add_argument("--sample-rate", type=int)
+    gui.add_argument("--sclang", default="sclang")
+    gui.add_argument("--library", type=Path)
     for name in ("render", "play"):
         audio = commands.add_parser(name, help="SuperCollider offline WAV render" if name == "render"
                                     else "submit to an exclusive running SuperCollider server")
@@ -263,6 +273,14 @@ def main() -> int:
             audio.add_argument("--lookahead", type=float, default=0.2)
     args = parser.parse_args()
     try:
+        if args.command == "gui":
+            try:
+                from dinad.gui import launch
+            except ModuleNotFoundError as exc:
+                if exc.name != "PySide6":
+                    raise
+                raise ValueError("Qt GUI requires the optional dependency. Install with pip install '.[gui]'.") from exc
+            return launch(args)
         module = (load_module_config(args.modules).operations.get(args.command)
                   if getattr(args, "modules", None) else None)
         if args.command == "live":
