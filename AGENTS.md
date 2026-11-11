@@ -30,5 +30,11 @@ Read docs/architecture.md, docs/m1.md and docs/roadmap.md before M1 work; consul
 - Preserve timing, deterministic event history and safe note-off/resource cleanup across adapters. Validate on Fedora before claiming third-party audio works.
 - Build small contracts and a single verified integration before attempting a universal plugin host.
 
+## M1 sequencing and listening gates
+- Do not change or interrupt an in-progress original M1.3 continuous-performance build; complete and merge it on its existing scope.
+- Next, M1.4 implements the functional F12 DINAD-native config editor with validated Ctrl+S application and safe rollback. See docs/m1.md. Leave advanced visual polish for M3.
+- **Pause for a Fedora hands-on listening/usability gate after M1.4 and before M1.5.** Do not proceed to external plugin integration until the owner has reviewed the observations and authorized continuation.
+- M1.5 is the first headless external instrument integration; M1.6 is the combined playable demo. Follow the revised milestone numbering in docs/m1.md.
+
 ## Deliverables per task
 Explain files changed, test results, architectural decisions, limitations, and next recommended step. Never claim audio was auditioned in cloud.
