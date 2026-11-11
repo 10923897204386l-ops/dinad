@@ -119,6 +119,9 @@ class Window(QMainWindow):
             QShortcut(QKeySequence.StandardKey.Save, self, activated=self._save),
             QShortcut(QKeySequence("Ctrl+Space"), self, activated=self._toggle_transport),
         ]
+        self.profile_shortcuts = []
+        self.shortcut_bindings = None
+        QApplication.instance().focusChanged.connect(self._enable_profile_shortcuts)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._poll)
         self.timer.start(20)
@@ -192,10 +195,45 @@ class Window(QMainWindow):
         self.reload_button.setEnabled(enabled)
         self.editor.setReadOnly(not enabled)
         self.profile_key.setEnabled(panel_enabled)
+        self._refresh_profile_shortcuts()
         values = self.state.project.snapshot()
         for identifier, field in self.fields.items():
             field.setEnabled(panel_enabled)
             field.setText(str(values[identifier]))
+
+    def _refresh_profile_shortcuts(self):
+        bindings = self.state.profile.bindings
+        if bindings != self.shortcut_bindings:
+            for shortcut in self.profile_shortcuts:
+                shortcut.setEnabled(False)
+                shortcut.deleteLater()
+            self.profile_shortcuts.clear()
+            self.shortcut_bindings = bindings
+            reserved = {key.toString() for shortcut in self.shortcuts for key in shortcut.keys()}
+            keys = {}
+            for token, _ in bindings:
+                sequence = QKeySequence.fromString(token, QKeySequence.SequenceFormat.PortableText)
+                if sequence.count() == 1 and sequence[0].key() != Qt.Key.Key_unknown:
+                    keys.setdefault(sequence.toString(), []).append(token)
+            # Qt may report a literal plus with Shift still set.
+            if "+" in keys:
+                keys.setdefault("Shift++", keys["+"])
+            for canonical, tokens in keys.items():
+                if canonical and canonical not in reserved and len(tokens) == 1:
+                    shortcut = QShortcut(QKeySequence(canonical), self,
+                                         activated=lambda key=tokens[0]: self._send_profile_key(key))
+                    shortcut.setAutoRepeat(False)
+                    self.profile_shortcuts.append(shortcut)
+        self._enable_profile_shortcuts()
+
+    def _enable_profile_shortcuts(self, *_):
+        enabled = (not self.busy and not self.closing and not self.overlay.isVisible()
+                   and not isinstance(QApplication.focusWidget(), QLineEdit))
+        for shortcut in self.profile_shortcuts:
+            shortcut.setEnabled(enabled)
+
+    def _send_profile_key(self, key):
+        self._submit("profile key", lambda model: model.transport.control(f"key {shlex.quote(key)}"))
 
     def _submit(self, operation, command):
         if self.busy or self.closing:
@@ -214,7 +252,7 @@ class Window(QMainWindow):
     def _profile_control(self):
         key = self.profile_key.text().strip()
         if key:
-            self._submit("profile key", lambda model: model.transport.control(f"key {shlex.quote(key)}"))
+            self._send_profile_key(key)
             self.profile_key.clear()
 
     def _start(self):

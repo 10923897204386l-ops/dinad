@@ -5,7 +5,7 @@ from queue import Empty, Queue
 from threading import Event, Thread
 from typing import Callable
 
-from dinad.config import Project
+from dinad.config import Profile, Project
 from dinad.editor import Document, EditorSession
 
 
@@ -13,6 +13,7 @@ from dinad.editor import Document, EditorSession
 class Result:
     running: bool
     project: Project
+    profile: Profile
     documents: dict[str, Document]
     message: str
     error: bool = False
@@ -31,7 +32,8 @@ class PanelWorker:
 
     def _snapshot(self, message: str, *, error=False, location=None, response=False) -> Result:
         transport = self.session.transport
-        return Result(transport.running, transport.session.project, dict(self.session.documents),
+        return Result(transport.running, transport.session.project, transport.session.profile,
+                      dict(self.session.documents),
                       message, error, location, response)
 
     def _run(self) -> None:

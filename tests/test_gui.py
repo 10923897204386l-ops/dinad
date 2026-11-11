@@ -59,6 +59,18 @@ def test_f12_save_validation_focus_and_reload(tmp_path, monkeypatch):
         QTest.keyClick(window.profile_key, Qt.Key.Key_Return)
         wait_for(lambda: not window.busy)
         assert window.state.running and window.state.project.anchor == 56
+        window.stop_button.setFocus()
+        QTest.keyClick(window.stop_button, Qt.Key.Key_Plus, Qt.KeyboardModifier.ShiftModifier)
+        wait_for(lambda: window.state.project.anchor == 57)
+        window.profile_key.setFocus()
+        QTest.keyClick(window.profile_key, Qt.Key.Key_Plus, Qt.KeyboardModifier.ShiftModifier)
+        assert window.profile_key.text() == "+" and not window.busy
+        assert window.state.project.anchor == 57
+        QTest.keyClick(window.profile_key, Qt.Key.Key_F12)
+        window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
+        QTest.keyClick(window.editor, Qt.Key.Key_Plus, Qt.KeyboardModifier.ShiftModifier)
+        assert window.editor.toPlainText().endswith("+") and not window.busy
+        assert window.state.project.anchor == 57
         assert (tmp_path / "project.toml").read_text() == text(anchor=55)
     finally:
         monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Discard)
