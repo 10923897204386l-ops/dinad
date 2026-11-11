@@ -152,7 +152,6 @@ def test_semantic_bindings_are_declarative_one_to_many_and_exactly_versioned():
     with pytest.raises(ValueError): SemanticBinding("", binding.targets)
     with pytest.raises(ValueError): SemanticBinding("instrument.tone", (), schema_version=2)
     with pytest.raises(ValueError): BindingTarget("test.native", "1", "cutoff", scale=float("nan"))
-    assert not hasattr(binding, "apply")  # M1.2 implements binding/config execution.
 
 
 def test_bindings_reject_read_only_or_non_numeric_transforms():
@@ -191,12 +190,15 @@ def test_application_boundary_closes_adapter_after_success_or_failure(monkeypatc
     import dinad.supercollider as sc
     calls = []
     created = []
-    real = sc.SuperColliderBackend
+    import dinad.execution as execution
+    from dinad.registry import BUILTINS, Registry
+
     def factory(settings):
-        backend = real(settings)
+        backend = sc.SuperColliderBackend(Settings(**settings))
         created.append(backend)
         return backend
-    monkeypatch.setattr(sc, "SuperColliderBackend", factory)
+    entry = BUILTINS.require("dinad.supercollider")
+    monkeypatch.setattr(execution, "BUILTINS", Registry((replace(entry, factory=factory),)))
     def rendered(events, output, settings, **options):
         calls.append((events, settings, options))
         return {"ok": True}

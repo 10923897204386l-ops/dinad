@@ -1,0 +1,17 @@
+schema_version = 1
+
+[operations.replay]
+module = "dinad.mock"
+version = "mock-v1"
+
+[operations.render]
+module = "dinad.supercollider"
+version = "supercollider-v1"
+
+[operations.render.settings]
+sample_rate = 48000
+tail = 2.0
+
+[operations.play]
+module = "dinad.supercollider"
+version = "supercollider-v1"

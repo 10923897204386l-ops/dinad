@@ -17,6 +17,7 @@ from dinad.config import PARAMETERS, Profile, Project, load_profile, load_projec
 from dinad.controls import Session
 from dinad.execution import play_history, render_history, replay_history
 from dinad.recording import decode
+from dinad.registry import BUILTINS, load_module_config
 
 
 def _save(path: Path, text: str) -> None:
@@ -151,6 +152,7 @@ def main() -> int:
     demo.add_argument("--tempo", type=float)
     playback = commands.add_parser("replay", help="replay resolved JSON through the mock backend")
     playback.add_argument("recording", type=Path)
+    playback.add_argument("--modules", type=Path, help="DINAD module configuration")
     validate = commands.add_parser("validate", help="validate project and optional control profile")
     validate.add_argument("project", type=Path)
     validate.add_argument("--profile", type=Path)
@@ -158,6 +160,10 @@ def main() -> int:
     interactive.add_argument("--project", type=Path)
     interactive.add_argument("--profile", type=Path)
     commands.add_parser("parameters", help="list stable parameter IDs and semantics")
+    commands.add_parser("modules", help="list built-in headless module descriptions")
+    module_check = commands.add_parser("validate-modules", help="validate configuration and preview mappings")
+    module_check.add_argument("config", type=Path)
+    module_check.add_argument("--project", type=Path)
     for name in ("perform", "capture"):
         timed = commands.add_parser(name, help="compile a timed TOML performance" if name == "perform"
                                    else "capture timestamped keyboard controls, then save resolved notes")
@@ -171,8 +177,9 @@ def main() -> int:
                                     else "submit to an exclusive running SuperCollider server")
         audio.add_argument("recording", type=Path)
         audio.add_argument("output", type=Path, help="new WAV path" if name == "render" else "new log directory")
-        audio.add_argument("--sample-rate", type=int, default=48000)
-        audio.add_argument("--tail", type=float, default=2)
+        audio.add_argument("--modules", type=Path, help="DINAD module configuration")
+        audio.add_argument("--sample-rate", type=int)
+        audio.add_argument("--tail", type=float)
         audio.add_argument("--sclang", default="sclang")
         audio.add_argument("--library", type=Path, help="optional sclang library YAML")
         audio.add_argument("--timeout", type=float, default=60)
@@ -187,7 +194,16 @@ def main() -> int:
             audio.add_argument("--lookahead", type=float, default=0.2)
     args = parser.parse_args()
     try:
-        if args.command in ("perform", "capture"):
+        module = (load_module_config(args.modules).operations.get(args.command)
+                  if getattr(args, "modules", None) else None)
+        if args.command == "modules":
+            print(json.dumps([asdict(item) for item in BUILTINS.descriptors], default=sorted, indent=2))
+        elif args.command == "validate-modules":
+            config = load_module_config(args.config)
+            project = load_project(args.project) if args.project else Project()
+            print(json.dumps({"operations": sorted(config.operations),
+                              "updates": [asdict(update) for update in config.resolve(project)]}, indent=2))
+        elif args.command in ("perform", "capture"):
             from dinad.performance import Performance, load_performance
 
             project = load_project(args.project) if args.project else Project()
@@ -200,7 +216,7 @@ def main() -> int:
         elif args.command in ("render", "play"):
             events = decode(args.recording.read_text(encoding="utf-8"))
             common = dict(sample_rate=args.sample_rate, tail=args.tail, sclang=args.sclang,
-                          library=args.library, timeout=args.timeout)
+                          library=args.library, timeout=args.timeout, module=module)
             if args.command == "render":
                 result = render_history(events, args.output, scsynth=args.scsynth,
                                         plugins=args.plugins, **common)
@@ -211,7 +227,7 @@ def main() -> int:
         elif args.command == "parameters":
             print(json.dumps({key: asdict(value) for key, value in PARAMETERS.items()}, indent=2))
         elif args.command == "replay":
-            count, version = replay_history(decode(args.recording.read_text(encoding="utf-8")))
+            count, version = replay_history(decode(args.recording.read_text(encoding="utf-8")), module=module)
             print(f"Replayed {count} resolved events through {version}.")
         else:
             project = load_project(args.project) if args.project else Project()
