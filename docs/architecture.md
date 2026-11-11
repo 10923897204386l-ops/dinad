@@ -23,6 +23,9 @@ One composition engine supports instant play, templates/script editing, recorded
 - Snapshots must distinguish musical state from complete DSP state; seek/freeze with effects requires checkpoints or replay.
 - Live and offline quality modes may differ; exact-render mode should retain settings where feasible.
 
+## Frozen desktop GUI technology (2026-11-11)
+DINAD's sole GUI toolkit is **PySide6 / Qt 6 Widgets**, with custom-painted widgets for the static instrument panel and Qt text-editing widgets for the F12 drop-down editor. The single DINAD window is keyboard-first, resizable/full-screen capable, and owns all plugin-facing controls; no plugin GUI or browser UI. The Qt presentation layer remains separate from the headless application model and audio scheduler. See [frozen GUI decision](gui-decision.md).
+
 ## Controls and configuration
 Fixed virtual instrument: knobs, illuminated pads, small displays, modal colours, keyboard-first Vim-like navigation, command bar and drop-down editable text. No mandatory piano roll or visual patch graph.
 - A parameter registry defines stable IDs, units, limits, labels, smoothing and semantics.
@@ -53,4 +56,4 @@ Python owns objects, behaviours, rules, orchestration and UI; a native audio eng
 Single GitHub mainline; short-lived branches and squash PRs. Codex Cloud handles headless deterministic tests; Fedora Kinoite Toolbox handles real-time/audio-device validation. Keep project compact and portable.
 
 ## Explicitly deferred
-Final GUI toolkit, production-grade plugin host, cross-engine synchronisation, advanced mastering, full DSP snapshots, production-ready latency compensation, instrument library and full offline render equivalence. Validate these before committing implementation architecture.
+Final GUI visual design, production-grade plugin host, cross-engine synchronisation, advanced mastering, full DSP snapshots, production-ready latency compensation, instrument library and full offline render equivalence. Validate these before committing implementation architecture.
