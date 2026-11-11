@@ -313,9 +313,11 @@ class ParameterWriter(ModuleAdapter, Protocol):
     def set_parameter(self, native_id: str, value: ParameterValue) -> None: ...
 
 
+@runtime_checkable
 class OfflineRenderer(ModuleAdapter, Protocol):
     def render(self, output: Path, **options) -> dict: ...
 
 
+@runtime_checkable
 class ScheduledPlayer(ModuleAdapter, Protocol):
     def play(self, work: Path, **options) -> dict: ...
