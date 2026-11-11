@@ -1,8 +1,11 @@
 """Ahead-of-time musical scheduling; no wall clock or DSP callbacks."""
 
 from dataclasses import dataclass
-from typing import Protocol
 
+from dinad.events import Event
+from dinad.modules import (
+    Capability, EventReceiver as Backend, ModuleDescriptor, ModuleKind, StagedLifecycle,
+)
 from dinad.interpreters import Note, interpret_notes
 from dinad.objects import ObjectInstance, _finite
 
@@ -48,25 +51,6 @@ class Part:
             raise TypeError("part notes must be Note values")
 
 
-@dataclass(frozen=True)
-class Event:
-    """Fully resolved note command; seconds relative to transport origin."""
-
-    instrument: str
-    pitch: float
-    time: float
-    duration: float
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.instrument, str) or not self.instrument.strip():
-            raise ValueError("instrument must be a non-empty string")
-        for name in ("pitch", "time", "duration"):
-            _finite(getattr(self, name), f"event {name}")
-        _finite(self.time + self.duration, "event end")
-        if self.time < 0 or self.duration <= 0:
-            raise ValueError("event time must be non-negative and duration positive")
-
-
 def schedule(parts: tuple[Part, ...], tempo: float = 120) -> tuple[Event, ...]:
     """Convert beats to seconds; stable ties follow part then note order."""
     _finite(tempo, "tempo")
@@ -84,16 +68,16 @@ def schedule(parts: tuple[Part, ...], tempo: float = 120) -> tuple[Event, ...]:
     return tuple(sorted(events, key=lambda event: event.time))
 
 
-class Backend(Protocol):
-    """Backend accepts resolved future events, including note lifetimes."""
-
-    def submit(self, event: Event) -> None: ...
-
-
-class MockBackend:
+class MockBackend(StagedLifecycle):
     version = "mock-v1"
+    descriptor = ModuleDescriptor(
+        identifier="dinad.mock", version=version, kind=ModuleKind.PERFORMANCE,
+        capabilities=frozenset({Capability.STAGED_NOTES}),
+        limitations=("Records resolved notes only; produces no audio.",),
+    )
 
     def __init__(self) -> None:
+        super().__init__()
         self._events: list[Event] = []
 
     @property
@@ -101,6 +85,7 @@ class MockBackend:
         return tuple(self._events)
 
     def submit(self, event: Event) -> None:
+        self._require_ready()
         if not isinstance(event, Event):
             raise TypeError("backend requires a resolved Event")
         if self._events and event.time < self._events[-1].time:
