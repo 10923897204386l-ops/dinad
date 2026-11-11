@@ -3,11 +3,15 @@
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
+import time
+
+from dinad.config import Profile, Project
 
 from dinad.engine import replay
 from dinad.events import Event
-from dinad.modules import Capability, NoteAdapter, OfflineRenderer, ParameterValue, ScheduledPlayer
+from dinad.modules import Capability, LiveProvider, NoteAdapter, OfflineRenderer, ParameterValue, ScheduledPlayer
 from dinad.registry import BUILTINS, ModuleSelection
+from dinad.transport import Transport
 
 
 @contextmanager
@@ -60,3 +64,24 @@ def play_history(events: tuple[Event, ...], output: Path, *, sample_rate: int | 
         assert isinstance(adapter, ScheduledPlayer)
         return adapter.play(output, sclang=sclang, library=library, timeout=timeout,
                             host=host, port=port, lookahead=lookahead, exclusive=exclusive)
+
+
+def live_transport(project: Project, profile: Profile, *, backend: str | None,
+                   exclusive: bool, port: int, sample_rate: int | None,
+                   sclang: str, library: Path | None, module: ModuleSelection | None = None) -> Transport:
+    if module is not None and backend is not None:
+        raise ValueError("select the live backend in TOML or with --backend")
+    selection = module or ModuleSelection(BUILTINS.require(f"dinad.{backend or 'mock'}"), {})
+    selection.registration.descriptor.require(Capability.CONTINUOUS_TRANSPORT)
+    overrides = {"sample_rate": sample_rate} if sample_rate is not None else {}
+    unsupported = (selection.settings.keys() | overrides.keys()) - selection.registration.live_settings
+    if unsupported:
+        raise ValueError(f"unsupported live settings: {', '.join(sorted(unsupported))}")
+    adapter = selection.create(**overrides)
+    try:
+        if not isinstance(adapter, LiveProvider):
+            raise ValueError("registered adapter does not implement continuous transport")
+        output = adapter.live_output(exclusive=exclusive, port=port, sclang=sclang, library=library)
+    finally:
+        adapter.close()
+    return Transport(project, profile, output, time.monotonic, lead=output.lead)

@@ -21,6 +21,7 @@ class Registration:
     descriptor: ModuleDescriptor
     factory: Callable[[Mapping[str, ParameterValue]], ModuleAdapter]
     settings: frozenset[str] = frozenset()
+    live_settings: frozenset[str] = frozenset()
 
     def validate_settings(self, values: Mapping[str, ParameterValue]) -> None:
         for name, value in values.items():
@@ -55,13 +56,14 @@ BUILTINS = Registry((
     Registration(MockBackend.descriptor, lambda settings: MockBackend()),
     Registration(SuperColliderBackend.descriptor,
                  lambda settings: SuperColliderBackend(Settings(**settings)),
-                 frozenset({"sample_rate", "tail", "preroll"})),
+                 frozenset({"sample_rate", "tail", "preroll"}), frozenset({"sample_rate"})),
 ))
 
 OPERATIONS = MappingProxyType({
     "replay": Capability.STAGED_NOTES,
     "render": Capability.OFFLINE_RENDER,
     "play": Capability.SCHEDULED_PLAYBACK,
+    "live": Capability.CONTINUOUS_TRANSPORT,
 })
 
 
@@ -161,7 +163,8 @@ def load_module_config(path: Path, registry: Registry = BUILTINS) -> ModuleConfi
             entry = registry.require(identifier, version)
             entry.descriptor.require(OPERATIONS[name])
             entry.descriptor.require(Capability.STAGED_NOTES)
-            settings = _table(table.get("settings", {}), set(entry.settings), f"operations.{name}.settings")
+            allowed = entry.live_settings if name == "live" else entry.settings
+            settings = _table(table.get("settings", {}), set(allowed), f"operations.{name}.settings")
             operations[name] = ModuleSelection(entry, settings)
         raw_bindings = document.get("bindings", {})
         if not isinstance(raw_bindings, dict):

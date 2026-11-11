@@ -3,6 +3,7 @@
 from dataclasses import asdict, dataclass, replace
 import json
 import shlex
+from typing import Callable
 
 from dinad.config import PARAMETERS, Profile, Project
 from dinad.demo import compose
@@ -71,7 +72,7 @@ class Session:
     def changes(self) -> tuple[Change, ...]:
         return tuple(self._changes)
 
-    def execute(self, command: str) -> str:
+    def execute(self, command: str, *, validate: Callable[[Project], None] | None = None) -> str:
         tokens = shlex.split(command)
         if tokens and tokens[0] == "key":
             if len(tokens) != 2:
@@ -91,6 +92,8 @@ class Session:
             parameter = PARAMETERS[original.parameter]
             candidate = replace(self.project, **{parameter.attribute: original.old})
             change = Change(len(self._changes), "undo", original.parameter, original.new, original.old)
+            if validate is not None:
+                validate(candidate)
             self._undo.pop()
         else:
             parameter = PARAMETERS[action.parameter]
@@ -99,6 +102,8 @@ class Session:
             # Validate the entire candidate before mutating state or either history.
             candidate = replace(self.project, **{parameter.attribute: value})
             change = Change(len(self._changes), action.kind, action.parameter, old, value)
+            if validate is not None:
+                validate(candidate)
             self._undo.append(change)
         self._project = candidate
         self._changes.append(change)

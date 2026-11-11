@@ -55,7 +55,7 @@ def test_builtins_declare_only_actual_support_without_starting_processes(monkeyp
         with pytest.raises(UnsupportedCapability, match="unsupported capability"):
             backend.descriptor.require(Capability.STATE_RESTORE)
     mock = MockBackend().descriptor
-    assert mock.capabilities == {Capability.STAGED_NOTES}
+    assert mock.capabilities == {Capability.STAGED_NOTES, Capability.CONTINUOUS_TRANSPORT}
     assert mock.audio_ports == mock.parameters == ()
     sc = SuperColliderBackend().descriptor
     assert sc.audio_ports == (AudioPort("master", "output", 2),)
