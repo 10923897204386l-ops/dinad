@@ -32,6 +32,13 @@ Fixed virtual instrument: knobs, illuminated pads, small displays, modal colours
 - Project overrides: rendering, routing, audio policy and selected profiles. Hard overrides must fail clearly if unavailable.
 - Config changes are validated and applied transactionally, with undo where feasible.
 
+## M1 binding rule: fixed DINAD interface, headless modules
+**Normative product decision (2026-11-11): DINAD is the sole front end.** The physical/visual control layout remains fixed after design; its contextual mappings and displays may change. Plugins may not open, embed or require their bespoke graphical interfaces. All normal instrument selection, configuration, parameter editing, presets, mappings and automation occur in DINAD through its own human-readable validated config files and controls.
+
+A dedicated modular abstraction layer discovers capabilities and translates resolved DINAD object actions to notes/MIDI, timestamped events, plugin parameters, state and audio routing. A plugin does not interpret DINAD objects itself. Semantic DINAD parameter IDs remain independent of plugin-native identifiers. Opaque state may be stored for recall only as a supplementary asset; GUI-only functionality is explicitly unsupported until represented through DINAD. Third-party plugin hosting must be designed independently of the provisional SuperCollider synthesis adapter, without assuming all plugins expose all parameters.
+
+See [M1 contract](m1.md) and [roadmap](roadmap.md).
+
 ## Synthesis and production
 Python owns objects, behaviours, rules, orchestration and UI; a native audio engine owns synthesis and DSP. SuperCollider is provisional; Csound is a possible optional specialist backend. Avoid implementing two competing production/mixing stacks.
 - Standard backend adapter: timestamped events, instrument definitions, parameter updates, outputs, latency and render capabilities.
@@ -46,4 +53,4 @@ Python owns objects, behaviours, rules, orchestration and UI; a native audio eng
 Single GitHub mainline; short-lived branches and squash PRs. Codex Cloud handles headless deterministic tests; Fedora Kinoite Toolbox handles real-time/audio-device validation. Keep project compact and portable.
 
 ## Explicitly deferred
-Final GUI toolkit, plugin host, cross-engine synchronisation, advanced mastering, full DSP snapshots, production-ready latency compensation, instrument library and full offline render equivalence. Validate these before committing implementation architecture.
+Final GUI toolkit, production-grade plugin host, cross-engine synchronisation, advanced mastering, full DSP snapshots, production-ready latency compensation, instrument library and full offline render equivalence. Validate these before committing implementation architecture.
