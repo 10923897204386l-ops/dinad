@@ -17,7 +17,7 @@ M0 is integrated. [M1.1 module contracts and adapter foundations](docs/m1-1.md) 
 
 **M1 architectural rule:** DINAD is the only front end. External instruments and effects operate headlessly, with all configuration and parameter bindings owned by DINAD files and its fixed control surface. Vendor-specific plugin GUIs are never required or embedded.
 
-Start here: [current roadmap](docs/roadmap.md) · [M1 build specification](docs/m1.md) · [architecture](docs/architecture.md) · [Codex rules](AGENTS.md).
+GUI technology frozen: **PySide6 / Qt 6 Widgets**, one DINAD window with a functional F12 editor in M1.4; see [GUI decision](docs/gui-decision.md).\n\nStart here: [current roadmap](docs/roadmap.md) · [M1 build specification](docs/m1.md) · [architecture](docs/architecture.md) · [Codex rules](AGENTS.md).
 
 M0 reference: [brief](docs/m0.md) · [implementation](docs/m0-implementation.md) · [local validation](docs/m0-local-audio.md). Detailed M0 checkpoint reports remain in `docs/m0-*.md`.
 

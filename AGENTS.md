@@ -20,6 +20,11 @@ Read docs/architecture.md, docs/m1.md and docs/roadmap.md before M1 work; consul
 - Do not implement a piano-roll or node-patch editor as the primary UI.
 - Preserve a small dependency footprint. Avoid premature C/Rust rewrites and unnecessary framework infrastructure.
 
+## Frozen GUI technology
+- **PySide6 / Qt 6 Widgets is the sole DINAD desktop GUI toolkit.** Read docs/gui-decision.md before any GUI work. No QML/Qt Quick, browser/web/Electron, GTK, Dear PyGui or vendor/plugin editor without explicit owner-approved architecture change.
+- The DINAD GUI is one window; a minimal performance panel and an **in-window F12 drop-down** editor are M1.4 deliverables. Use Qt text editing and syntax highlighting. Keep final panel visual polish for M3.
+- The application model and headless CLI/tests must remain usable without Qt or a display. Qt must not perform audio DSP or block scheduling; all controls go through DINAD's semantic model.
+
 ## Mandatory M1 front-end and plugin rules
 - DINAD is the **only user-facing interface**. Never launch, embed, require or fall back to a third-party plugin's bespoke GUI. No vendor UI framework is part of DINAD.
 - All user-facing plugin configuration, mapping, preset selection, automation and diagnostics are controlled by DINAD and represented in schema-validated, human-readable DINAD config files.
@@ -32,7 +37,7 @@ Read docs/architecture.md, docs/m1.md and docs/roadmap.md before M1 work; consul
 
 ## M1 sequencing and listening gates
 - Do not change or interrupt an in-progress original M1.3 continuous-performance build; complete and merge it on its existing scope.
-- Next, M1.4 implements the functional F12 DINAD-native config editor with validated Ctrl+S application and safe rollback. See docs/m1.md. Leave advanced visual polish for M3.
+- Next, M1.4 implements the minimal PySide6/Qt Widgets DINAD performance panel and functional F12 DINAD-native config editor with validated Ctrl+S application and safe rollback. See docs/m1.md. Leave advanced visual polish for M3.
 - **Pause for a Fedora hands-on listening/usability gate after M1.4 and before M1.5.** Do not proceed to external plugin integration until the owner has reviewed the observations and authorized continuation.
 - M1.5 is the first headless external instrument integration; M1.6 is the combined playable demo. Follow the revised milestone numbering in docs/m1.md.
 
