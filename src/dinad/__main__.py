@@ -1,13 +1,17 @@
 """Headless composition, validated project files and keyboard command sessions."""
 
 import argparse
+import codecs
 from dataclasses import asdict, replace
 import json
 import os
+import queue
 from pathlib import Path
 import shlex
 import sys
 import tempfile
+import threading
+import time
 
 from dinad.config import PARAMETERS, Profile, Project, load_profile, load_project
 from dinad.controls import Session
@@ -57,6 +61,86 @@ def _session(session: Session) -> int:
     return 1 if failed else 0
 
 
+def _save_new(path: Path, text: str) -> None:
+    """Publish a complete new history atomically without replacing prior takes."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".dinad-", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(text)
+        os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _capture(performance, output: Path) -> int:
+    """Timestamp complete input lines; a daemon reader permits automatic finish."""
+    if output.exists() or not output.parent.is_dir():
+        raise ValueError("capture requires a new output in an existing directory")
+    incoming = queue.Queue()
+    origin = time.monotonic()
+
+    def read():
+        try:
+            decoder = codecs.getincrementaldecoder(sys.stdin.encoding or "utf-8")()
+            pending = ""
+            while True:
+                # Avoid a daemon holding TextIOWrapper's lock at interpreter exit.
+                chunk = os.read(sys.stdin.fileno(), 4096)
+                pending += decoder.decode(chunk, final=not chunk)
+                while "\n" in pending:
+                    line, pending = pending.split("\n", 1)
+                    incoming.put((time.monotonic() - origin, line + "\n"))
+                if not chunk:
+                    if pending:
+                        incoming.put((time.monotonic() - origin, pending))
+                    incoming.put((time.monotonic() - origin, ""))
+                    return
+        except (OSError, UnicodeError, ValueError) as exc:
+            incoming.put((time.monotonic() - origin, exc))
+
+    threading.Thread(target=read, daemon=True).start()
+    print("Capturing 16 beats. Enter set/adjust/key/undo/inspect; quit or EOF stops. "
+          "Save then render/play the captured history.", file=sys.stderr)
+    failed = False
+    try:
+        while True:
+            remaining = performance.end_time - (time.monotonic() - origin)
+            try:
+                seconds, line = incoming.get(timeout=max(0, min(.05, remaining)))
+            except queue.Empty:
+                if remaining <= 0:
+                    stop = performance.end_time
+                    break
+                continue
+            if seconds >= performance.end_time:
+                stop = performance.end_time
+                break
+            if isinstance(line, Exception):
+                raise OSError(f"capture input failed: {line}")
+            if not line:
+                stop = seconds
+                break
+            if not line.strip():
+                continue
+            try:
+                result = performance.execute(line, seconds)
+                if result == "quit":
+                    stop = seconds
+                    break
+                print(result, flush=True)
+            except (ValueError, OverflowError) as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                failed = True
+    except KeyboardInterrupt:
+        stop = min(time.monotonic() - origin, performance.end_time)
+    _save_new(output, performance.recording(stop))
+    print(f"Saved timed performance to {output}", file=sys.stderr)
+    return 1 if failed else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -74,6 +158,14 @@ def main() -> int:
     interactive.add_argument("--project", type=Path)
     interactive.add_argument("--profile", type=Path)
     commands.add_parser("parameters", help="list stable parameter IDs and semantics")
+    for name in ("perform", "capture"):
+        timed = commands.add_parser(name, help="compile a timed TOML performance" if name == "perform"
+                                   else "capture timestamped keyboard controls, then save resolved notes")
+        if name == "perform":
+            timed.add_argument("timeline", type=Path)
+        timed.add_argument("output", type=Path, help="new resolved recording; never overwrites")
+        timed.add_argument("--project", type=Path)
+        timed.add_argument("--profile", type=Path)
     for name in ("render", "play"):
         audio = commands.add_parser(name, help="SuperCollider offline WAV render" if name == "render"
                                     else "submit to an exclusive running SuperCollider server")
@@ -95,7 +187,17 @@ def main() -> int:
             audio.add_argument("--lookahead", type=float, default=0.2)
     args = parser.parse_args()
     try:
-        if args.command in ("render", "play"):
+        if args.command in ("perform", "capture"):
+            from dinad.performance import Performance, load_performance
+
+            project = load_project(args.project) if args.project else Project()
+            profile = load_profile(args.profile) if args.profile else Profile()
+            if args.command == "capture":
+                return _capture(Performance(project, profile), args.output)
+            performance = load_performance(args.timeline, project, profile)
+            _save_new(args.output, performance.recording())
+            print(f"Saved timed performance to {args.output}")
+        elif args.command in ("render", "play"):
             from dinad.supercollider import Settings, SuperColliderBackend
 
             events = decode(args.recording.read_text(encoding="utf-8"))

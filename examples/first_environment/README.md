@@ -14,3 +14,7 @@ python -m dinad session --project examples/first_environment/project.toml \
 Enter `key +`, `inspect`, `undo`, `generate`, or `quit`. This is a headless mock
 session, with no audio output. The project format configures the built-in demo;
 arbitrary musical-object serialization is not implemented yet.
+
+`performance.toml` is an M0.6 timed-control example. Compile it with
+`python -m dinad perform examples/first_environment/performance.toml recordings/take.json`
+(after creating `recordings/`), then replay or render the resolved history.
