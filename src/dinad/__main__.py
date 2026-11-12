@@ -233,6 +233,7 @@ def main() -> int:
     gui.add_argument("--modules", type=Path)
     gui.add_argument("--backend", choices=("mock", "supercollider", "lv2_epiano"))
     gui.add_argument("--exclusive-server", action="store_true")
+    gui.add_argument("--layered", action="store_true", help="route drone and pad to a dedicated SuperCollider server")
     gui.add_argument("--port", type=int, default=57110)
     gui.add_argument("--sample-rate", type=int)
     gui.add_argument("--sclang", default="sclang")

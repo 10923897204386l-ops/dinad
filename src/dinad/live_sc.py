@@ -52,13 +52,15 @@ class SuperColliderLive:
     lead = .05
 
     def __init__(self, *, port: int, settings: Settings = Settings(),
-                 sclang: str = "sclang", library: Path | None = None) -> None:
+                 sclang: str = "sclang", library: Path | None = None,
+                 audible_drone: bool = False) -> None:
         if not 1 <= port <= 65535:
             raise ValueError("TCP port must be between 1 and 65535")
         self.port = port
         self.settings = settings
         self.sclang = sclang
         self.library = library
+        self.audible_drone = audible_drone
         self._connection: socket.socket | None = None
         self._definitions: tuple[bytes, ...] = ()
         self._serial = 0
@@ -73,7 +75,12 @@ class SuperColliderLive:
         with TemporaryDirectory(prefix="dinad-live-") as directory:
             work = Path(directory)
             script = work / "defs.scd"
-            script.write_text(f"({_assets()}.do {{ |def| def.writeDefFile({_sc_string(directory)}) }}; 0.exit;)\n")
+            assets = _assets()
+            if self.audible_drone:
+                assets = assets.replace("SinOsc.ar(freq) * amp * env) ! 2",
+                                        "Mix(SinOsc.ar(freq * [1, 2, 4]) * [0.55, 0.9, 0.7]) * amp * env) ! 2",
+                                        1)
+            script.write_text(f"({assets}.do {{ |def| def.writeDefFile({_sc_string(directory)}) }}; 0.exit;)\n")
             log = work / "compile.log"
             try:
                 _run([*_sclang_arguments(self.sclang, self.library), str(script)], log, 15)

@@ -120,3 +120,25 @@ def test_live_take_replays_resolved_notes_and_controls(monkeypatch):
     playback.advance()
     assert not playback.running and sent[-1] == ()
     assert transport.output.initial["hardness"] == .5
+
+
+def test_layered_output_routes_note_on_and_off_to_the_same_engine():
+    from unittest.mock import Mock
+    from dinad.execution import LayeredOutput
+
+    piano = Mock(lead=.05)
+    synth = Mock(lead=.05)
+    output = LayeredOutput(piano, synth)
+    drone = (1002, Event("drone", 36, 0, 1))
+    pad = (1003, Event("pad", 48, 0, 1))
+    arp = (1004, Event("arp.fast", 72, 0, 1))
+    output.open()
+    output.send(10, (), (drone, pad, arp))
+    synth.send.assert_called_once_with(10, (), (drone, pad))
+    piano.send.assert_called_once_with(10, (), (arp,))
+    output.send(11, (1002, 1004), ())
+    synth.send.assert_called_with(11, (1002,), ())
+    piano.send.assert_called_with(11, (1004,), ())
+    output.close((1003,))
+    synth.close.assert_called_once_with((1003,))
+    piano.close.assert_called_once_with(())

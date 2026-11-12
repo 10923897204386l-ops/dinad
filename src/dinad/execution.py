@@ -9,6 +9,8 @@ from dinad.config import Profile, Project
 
 from dinad.engine import replay
 from dinad.events import Event
+from dinad.live_sc import SuperColliderLive
+from dinad.supercollider import Settings
 from dinad.modules import Capability, LiveProvider, NoteAdapter, OfflineRenderer, ParameterValue, ScheduledPlayer
 from dinad.registry import BUILTINS, ModuleConfig, ModuleSelection
 from dinad.lv2_epiano import EPianoBackend, EPianoLive
@@ -77,7 +79,7 @@ def play_history(events: tuple[Event, ...], output: Path, *, sample_rate: int | 
 def live_transport(project: Project, profile: Profile, *, backend: str | None,
                    exclusive: bool, port: int, sample_rate: int | None,
                    sclang: str, library: Path | None, module: ModuleSelection | None = None,
-                   module_config: ModuleConfig | None = None) -> Transport:
+                   module_config: ModuleConfig | None = None, layered: bool = False) -> Transport:
     if module_config is not None:
         module = module_config.operations.get("live")
     if module is not None and backend is not None:
@@ -95,7 +97,14 @@ def live_transport(project: Project, profile: Profile, *, backend: str | None,
         output = adapter.live_output(exclusive=exclusive, port=port, sclang=sclang, library=library)
     finally:
         adapter.close()
-    transport = Transport(project, profile, output, time.monotonic, lead=output.lead)
+    live_output = output
+    if layered:
+        if not exclusive or not isinstance(output, EPianoLive):
+            raise ValueError("layered playback requires ePiano and --exclusive-server")
+        live_output = LayeredOutput(output, SuperColliderLive(
+            port=port, settings=Settings(sample_rate=output.rate), sclang=sclang,
+            library=library, audible_drone=True))
+    transport = Transport(project, profile, live_output, time.monotonic, lead=live_output.lead)
     if isinstance(output, EPianoLive):
         transport.output_metadata = output.metadata
     if module_config is not None and module_config.bindings:
@@ -115,7 +124,8 @@ def live_transport(project: Project, profile: Profile, *, backend: str | None,
 def play_take(transport: Transport, take: tuple[tuple[Event, ...], dict]) -> TakePlayback:
     if transport.running:
         raise ValueError("stop the performance before replaying a take")
-    output = transport.output
+    routing = transport.output
+    output = routing.piano if isinstance(routing, LayeredOutput) else routing
     if not isinstance(output, EPianoLive):
         raise ValueError("select the DINAD ePiano live module to replay a take")
     events, metadata = take
@@ -131,9 +141,56 @@ def play_take(transport: Transport, take: tuple[tuple[Event, ...], dict]) -> Tak
         raise ValueError("recorded ePiano stop time is invalid")
     controls, automation = EPianoBackend.restore_controls(state, stop)
     playback = EPianoLive({**output.initial, **controls})
-    return TakePlayback(playback, transport.clock, events, max(stop, last_release) + .25,
+    replay_output = LayeredOutput(playback, routing.synth) if isinstance(routing, LayeredOutput) else playback
+    return TakePlayback(replay_output, transport.clock, events, max(stop, last_release) + .25,
                         automation, playback.set_controls)
 
 
 def load_take(path: Path) -> tuple[tuple[Event, ...], dict]:
     return decode_take(path.expanduser().read_text(encoding="utf-8"))
+
+
+class LayeredOutput:
+    """Route sustained parts to the reserved synth and both arps to ePiano."""
+
+    sustained = frozenset({"drone", "pad"})
+
+    def __init__(self, piano: EPianoLive, synth: SuperColliderLive):
+        self.piano = piano
+        self.synth = synth
+        self.lead = max(piano.lead, synth.lead)
+        self.synth_nodes: set[int] = set()
+
+    @property
+    def diagnostics(self):
+        return self.piano.diagnostics
+
+    def validate(self, events):
+        self.synth.validate(tuple(e for e in events if e.instrument in self.sustained))
+        self.piano.validate(tuple(e for e in events if e.instrument not in self.sustained))
+
+    def open(self):
+        self.synth_nodes.clear()
+        self.synth.open()
+        try:
+            self.piano.open()
+        except BaseException:
+            self.synth.close(())
+            raise
+
+    def send(self, deadline, releases, starts):
+        synth_releases = tuple(node for node in releases if node in self.synth_nodes)
+        piano_releases = tuple(node for node in releases if node not in self.synth_nodes)
+        synth_starts = tuple(item for item in starts if item[1].instrument in self.sustained)
+        piano_starts = tuple(item for item in starts if item[1].instrument not in self.sustained)
+        self.piano.send(deadline, piano_releases, piano_starts)
+        if synth_releases or synth_starts:
+            self.synth.send(deadline, synth_releases, synth_starts)
+        self.synth_nodes.difference_update(synth_releases)
+        self.synth_nodes.update(node for node, _ in synth_starts)
+
+    def close(self, active):
+        try:
+            self.piano.close(tuple(node for node in active if node not in self.synth_nodes))
+        finally:
+            self.synth.close(tuple(node for node in active if node in self.synth_nodes))

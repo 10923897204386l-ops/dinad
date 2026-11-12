@@ -462,7 +462,7 @@ def launch(args) -> int:
     def factory(project, profile, module_config):
         return live_transport(project, profile, backend=args.backend, exclusive=args.exclusive_server,
                               port=args.port, sample_rate=args.sample_rate, sclang=args.sclang,
-                              library=args.library, module_config=module_config)
+                              library=args.library, module_config=module_config, layered=getattr(args, "layered", False))
 
     worker = PanelWorker(EditorSession(documents, factory))
     app = QApplication.instance() or QApplication(["DINAD"])
