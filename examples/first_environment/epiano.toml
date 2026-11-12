@@ -1,0 +1,33 @@
+schema_version = 1
+
+[operations.live]
+module = "dinad.lv2_epiano"
+version = "mda-epiano-2.0-v1"
+
+[operations.live.settings]
+sample_rate = 48000
+random_tuning = 0.0
+hardness = 0.5
+
+[operations.render]
+module = "dinad.lv2_epiano"
+version = "mda-epiano-2.0-v1"
+
+[operations.render.settings]
+sample_rate = 48000
+random_tuning = 0.0
+hardness = 0.5
+
+# This project uses anchor to drive two timbre controls.
+[[bindings."composition.anchor"]]
+module_id = "dinad.lv2_epiano"
+module_version = "mda-epiano-2.0-v1"
+native_id = "hardness"
+scale = 0.0078125
+
+[[bindings."composition.anchor"]]
+module_id = "dinad.lv2_epiano"
+module_version = "mda-epiano-2.0-v1"
+native_id = "treble_boost"
+scale = 0.00390625
+offset = 0.25

@@ -4,3 +4,4 @@ recursive-include scripts *.py *.md
 recursive-include examples *.toml *.md
 recursive-include config *.toml
 recursive-include synthesis *.md
+recursive-include tools/lv2 *.c Makefile

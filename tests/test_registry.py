@@ -129,7 +129,7 @@ def test_catalog_and_config_validation_cli():
         return json.loads(subprocess.check_output([sys.executable, "-m", "dinad", *arguments], text=True))
 
     catalog = cli("modules")
-    assert [item["identifier"] for item in catalog] == ["dinad.mock", "dinad.supercollider"]
+    assert [item["identifier"] for item in catalog] == ["dinad.mock", "dinad.supercollider", "dinad.lv2_epiano"]
     assert all(item["headless"] for item in catalog)
     example = Path(__file__).resolve().parents[1] / "examples/first_environment/modules.toml"
     assert cli("validate-modules", str(example)) == {"operations": ["play", "render", "replay"], "updates": []}

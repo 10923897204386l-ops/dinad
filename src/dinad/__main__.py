@@ -234,7 +234,7 @@ def main() -> int:
     live = commands.add_parser("live", help="loop the composition with interactive timed controls")
     live.add_argument("--project", type=Path)
     live.add_argument("--profile", type=Path)
-    live.add_argument("--backend", choices=("mock", "supercollider"))
+    live.add_argument("--backend", choices=("mock", "supercollider", "lv2_epiano"))
     live.add_argument("--modules", type=Path, help="DINAD module configuration")
     live.add_argument("--exclusive-server", action="store_true")
     live.add_argument("--port", type=int, default=57110, help="local SuperCollider TCP port")
@@ -245,7 +245,7 @@ def main() -> int:
     gui.add_argument("--project", type=Path, required=True)
     gui.add_argument("--profile", type=Path)
     gui.add_argument("--modules", type=Path)
-    gui.add_argument("--backend", choices=("mock", "supercollider"))
+    gui.add_argument("--backend", choices=("mock", "supercollider", "lv2_epiano"))
     gui.add_argument("--exclusive-server", action="store_true")
     gui.add_argument("--port", type=int, default=57110)
     gui.add_argument("--sample-rate", type=int)
@@ -265,6 +265,8 @@ def main() -> int:
         if name == "render":
             audio.add_argument("--scsynth", default="scsynth")
             audio.add_argument("--plugins", type=Path)
+            audio.add_argument("--restore-module-state", action="store_true",
+                               help="restore saved DINAD module controls and automation")
         else:
             audio.add_argument("--exclusive-server", action="store_true", required=True,
                                help="confirm node group 1000 and bus 16 are reserved for this run")
@@ -281,15 +283,15 @@ def main() -> int:
                     raise
                 raise ValueError("Qt GUI requires the optional dependency. Install with pip install '.[gui]'.") from exc
             return launch(args)
-        module = (load_module_config(args.modules).operations.get(args.command)
-                  if getattr(args, "modules", None) else None)
+        module_config = load_module_config(args.modules) if getattr(args, "modules", None) else None
+        module = module_config.operations.get(args.command) if module_config else None
         if args.command == "live":
             project = load_project(args.project) if args.project else Project()
             profile = load_profile(args.profile) if args.profile else Profile()
             return _live(live_transport(project, profile, backend=args.backend,
                                         exclusive=args.exclusive_server, port=args.port,
                                         sample_rate=args.sample_rate, sclang=args.sclang,
-                                        library=args.library, module=module))
+                                        library=args.library, module_config=module_config))
         elif args.command == "modules":
             print(json.dumps([asdict(item) for item in BUILTINS.descriptors], default=sorted, indent=2))
         elif args.command == "validate-modules":
@@ -308,12 +310,19 @@ def main() -> int:
             _save_new(args.output, performance.recording())
             print(f"Saved timed performance to {args.output}")
         elif args.command in ("render", "play"):
-            events = decode(args.recording.read_text(encoding="utf-8"))
+            recording = args.recording.read_text(encoding="utf-8")
+            events = decode(recording)
             common = dict(sample_rate=args.sample_rate, tail=args.tail, sclang=args.sclang,
                           library=args.library, timeout=args.timeout, module=module)
             if args.command == "render":
+                state = None
+                if args.restore_module_state:
+                    metadata = json.loads(recording).get("metadata")
+                    state = metadata.get("module_state") if isinstance(metadata, dict) else None
+                    if not isinstance(state, dict):
+                        raise ValueError("recording has no DINAD module state to restore")
                 result = render_history(events, args.output, scsynth=args.scsynth,
-                                        plugins=args.plugins, **common)
+                                        plugins=args.plugins, module_state=state, **common)
             else:
                 result = play_history(events, args.output, host=args.host, port=args.port,
                                       lookahead=args.lookahead, exclusive=args.exclusive_server, **common)

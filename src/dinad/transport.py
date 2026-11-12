@@ -38,6 +38,8 @@ class Transport:
         self.output = output
         self.clock = clock
         self.lead = lead
+        self.before_onset: Callable[[Project], None] | None = None
+        self.output_metadata: Callable[[float, float], dict] | None = None
         self.running = False
         self.active_seed: int | None = None
         self.origin = 0.
@@ -90,6 +92,8 @@ class Transport:
                      for note in self.pattern if note.time == beat]
             starts = tuple(enumerate(notes, 1002 + len(self.events)))
         try:
+            if at == self.onset and self.before_onset is not None:
+                self.before_onset(self.session.project)
             self.output.send(self.origin + at, releases, starts)
         except BaseException as error:
             try:
@@ -172,7 +176,9 @@ class Transport:
             raise ValueError("stop the transport before saving")
         events = tuple(replace(e, duration=min(e.duration, self.stop_time - e.time))
                        for e in self.events if e.time < self.stop_time)
+        output_metadata = self.output_metadata(self.origin, self.stop_time) if self.output_metadata else {}
         return encode(events, {
+            **output_metadata,
             "generator": "m1-continuous-demo-v1",
             "project": self.take_project.snapshot(),
             "live_controls": {"schema_version": 1, "stop_seconds": self.stop_time,
