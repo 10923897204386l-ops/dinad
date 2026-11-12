@@ -37,6 +37,12 @@ def test_f12_save_validation_focus_and_reload(tmp_path, monkeypatch):
         assert app.focusWidget() is window.editor
         QTest.keyClick(window.editor, Qt.Key.Key_QuoteLeft)
         assert window.overlay.isVisible() and "`" in window.editor.toPlainText()
+        QTest.keyClick(window.editor, Qt.Key.Key_Escape)
+        assert not window.overlay.isVisible() and window.state.running
+        assert app.focusWidget() is window.stop_button
+        QTest.keyClick(window.stop_button, Qt.Key.Key_QuoteLeft)
+        assert window.overlay.isVisible() and window.dirty
+        assert "`" in window.editor.toPlainText()
         window.editor.setPlainText("schema_version = 1\nanchor = ]\n")
         QTest.keyClick(window.editor, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier)
         wait_for(lambda: not window.busy)

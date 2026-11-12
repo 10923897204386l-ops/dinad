@@ -111,6 +111,9 @@ class Window(QMainWindow):
         self.reload_button = QPushButton("Reload")
         for widget in (self.files, self.save_button, self.reload_button):
             toolbar.addWidget(widget)
+        close_editor = QPushButton("Close  Esc")
+        close_editor.clicked.connect(self.toggle_editor)
+        toolbar.addWidget(close_editor)
         editing.addLayout(toolbar)
         self.path = QLabel()
         self.path.setWordWrap(True)
@@ -137,6 +140,9 @@ class Window(QMainWindow):
         self.replay_button.clicked.connect(self._replay_take)
         self.shortcuts = [
             QShortcut(QKeySequence("F12"), self, activated=self.toggle_editor),
+            QShortcut(QKeySequence("Esc"), self.overlay,
+                      context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
+                      activated=self.toggle_editor),
             QShortcut(QKeySequence.StandardKey.Save, self, activated=self._save),
             QShortcut(QKeySequence("Ctrl+Space"), self, activated=self._toggle_transport),
         ]
