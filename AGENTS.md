@@ -38,7 +38,8 @@ Read docs/architecture.md, docs/m1.md and docs/roadmap.md before M1 work; consul
 ## M1 sequencing and listening gates
 - Do not change or interrupt an in-progress original M1.3 continuous-performance build; complete and merge it on its existing scope.
 - Next, M1.4 implements the minimal PySide6/Qt Widgets DINAD performance panel and functional F12 DINAD-native config editor with validated Ctrl+S application and safe rollback. See docs/m1.md. Leave advanced visual polish for M3.
-- **Pause for a Fedora hands-on listening/usability gate after M1.4 and before M1.5.** Do not proceed to external plugin integration until the owner has reviewed the observations and authorized continuation.
+- **Pause for a Fedora hands-on listening/usability gate after M1.4 and before M1.5.** Owner has reported M1.4 working and authorized proceeding to M1.5 with M1.4.1 included first; retain M1.5's separate Fedora plugin listening gate.
+- M1.4 owner Fedora test: PASS with minor usability follow-ups (editor key and random seed). **Before M1.5 host work**, implement docs/m1-4-1.md as its own small PR from fresh main: backtick editor toggle (F12 retained), keyboard seed editing with explicit active/pending semantics and deterministic tests. Do not hijack typing backticks in the editor. Keep this PR separate from plugin-host code.
 - M1.5 is the first headless external instrument integration; M1.6 is the combined playable demo. Follow the revised milestone numbering in docs/m1.md.
 
 ## Deliverables per task
