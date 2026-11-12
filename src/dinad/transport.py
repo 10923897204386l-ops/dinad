@@ -39,6 +39,7 @@ class Transport:
         self.clock = clock
         self.lead = lead
         self.running = False
+        self.active_seed: int | None = None
         self.origin = 0.
         self.tick = 0
         self.onset = 0.
@@ -102,6 +103,7 @@ class Transport:
             self.active[node] = event.time + event.duration
             self.events.append(event)
         if at == self.onset:
+            self.active_seed = self.session.project.seed
             self.tick += 1
             self.onset += seconds_per_beat / 2
 
@@ -158,6 +160,7 @@ class Transport:
     def stop(self) -> None:
         if self.running:
             self.running = False
+            self.active_seed = None
             self.stop_time = max(0., self.clock() - self.origin)
             try:
                 self.output.close(tuple(self.active))
