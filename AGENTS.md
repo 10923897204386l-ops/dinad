@@ -35,6 +35,11 @@ Read docs/architecture.md, docs/m1.md and docs/roadmap.md before M1 work; consul
 - Preserve timing, deterministic event history and safe note-off/resource cleanup across adapters. Validate on Fedora before claiming third-party audio works.
 - Build small contracts and a single verified integration before attempting a universal plugin host.
 
+## Frozen M2 Lua automation boundary
+- Read docs/lua-automation-decision.md before Lua or M2 planning. Lua is **only a programmable source of DINAD semantic controller events**, not a second composition engine, plugin authoring runtime or DSP language.
+- Lua and GUI controls use the same stable DINAD parameter registry and Python scheduler. Python retains musical interpretation, plugin/synthesis management and production orchestration; native engines do real-time DSP. Never permit Lua to call plugin-native APIs or run in audio callbacks.
+- Preserve deterministic timestamped event history, restrict script capabilities and resources, and explicitly specify manual-vs-automation precedence. Do not add Lua to M1.5/M1.6.
+
 ## M1 sequencing and listening gates
 - Do not change or interrupt an in-progress original M1.3 continuous-performance build; complete and merge it on its existing scope.
 - Next, M1.4 implements the minimal PySide6/Qt Widgets DINAD performance panel and functional F12 DINAD-native config editor with validated Ctrl+S application and safe rollback. See docs/m1.md. Leave advanced visual polish for M3.
