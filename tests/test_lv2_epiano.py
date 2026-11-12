@@ -41,21 +41,22 @@ def test_example_routes_semantic_edits_to_both_epiano_ports():
 
 
 def test_state_restore_is_versioned_and_validates_all_controls():
-    backend = EPianoBackend({"hardness": .25})
     original = EPianoBackend({"hardness": .75})
     output = original.live_output()
     output.automation.append((100.025, {"hardness": .8, "treble_boost": .25}))
     state = json.loads(json.dumps(output.metadata(100., 1.)["module_state"]))
     assert state["controls"].keys() == PORT_INDEX.keys()
-    assert backend._restore(state, 1., 48000) == ["p 1200 2 0.8", "p 1200 3 0.25"]
-    assert backend.get_parameter("hardness") == .75
+    controls, automation = EPianoBackend.restore_controls(state, 1.)
+    assert controls["hardness"] == .75
+    assert len(automation) == 1
+    assert automation[0][0] == pytest.approx(.025)
+    assert automation[0][1] == {"hardness": .8, "treble_boost": .25}
     state["controls"]["hardness"] = 2
     with pytest.raises(ValueError, match="hardness"):
-        backend._restore(state, 1., 48000)
-    assert backend.get_parameter("hardness") == .75
+        EPianoBackend.restore_controls(state, 1.)
     state["version"] = "other"
     with pytest.raises(ValueError, match="incompatible"):
-        backend._restore(state, 1., 48000)
+        EPianoBackend.restore_controls(state, 1.)
 
 
 def _frames(path):
@@ -92,3 +93,30 @@ def test_actual_plugin_renders_sample_offset_and_restores_automation(tmp_path):
     assert manifest["settings"]["hardness"] == 0 and manifest["settings"]["random_tuning"] == 0
     assert frames[:1200] == reference[:1200]
     assert frames[4848:6000] != reference[4848:6000]
+
+
+def test_live_take_replays_resolved_notes_and_controls(monkeypatch):
+    from dinad.execution import play_take
+    from dinad.lv2_epiano import EPianoLive
+    from dinad.transport import Transport
+
+    sent = []
+    monkeypatch.setattr(EPianoLive, "open", lambda self: None)
+    monkeypatch.setattr(EPianoLive, "send", lambda self, at, off, on:
+                        sent.append((at, off, on, self.pending.copy())))
+    monkeypatch.setattr(EPianoLive, "close", lambda self, active: sent.append(active))
+    original = EPianoBackend({"hardness": .25}).live_output()
+    original.automation.append((.125, {"hardness": .75}))
+    metadata = original.metadata(0., .5)
+    transport = Transport(Project(), Profile(), EPianoBackend({"hardness": .5}).live_output(), lambda: 10.)
+    note = Event("arp.fast", 72, .125, .125)
+    playback = play_take(transport, ((note,), metadata))
+    assert playback.output.initial["hardness"] == .25
+    assert playback.deadline == pytest.approx(10.175)
+    playback.advance()
+    assert sent[0][1:] == ((), ((1002, note),), {"hardness": .75})
+    playback.advance()
+    assert sent[1][1:3] == ((1002,), ())
+    playback.advance()
+    assert not playback.running and sent[-1] == ()
+    assert transport.output.initial["hardness"] == .5

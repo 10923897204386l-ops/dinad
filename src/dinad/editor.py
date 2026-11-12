@@ -118,6 +118,7 @@ class EditorSession:
         loaded = {kind: LOADERS[kind](doc.path) for kind, doc in documents.items()}
         if any(doc.path.read_bytes() != doc.content for doc in documents.values()):
             raise EditError("Configuration changed while opening the editor. Reopen it to load the latest version.")
+        self.playback = None
         self.modules = loaded.get("modules")
         self.transport = factory(loaded["project"], loaded.get("profile", Profile()), self.modules)
 

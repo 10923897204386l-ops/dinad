@@ -228,3 +228,18 @@ def test_seed_is_pending_until_next_onset_and_history_is_repeatable():
         transport.stop()
         histories.append(transport.recording())
     assert histories[0] == histories[1]
+
+
+def test_evolving_demo_varies_fast_arp_by_cycle():
+    from dinad.demo import compose
+    from dinad.transport import SilentOutput
+
+    transport = Transport(Project(seed=42, evolve=True), Profile(), SilentOutput(), lambda: 0.)
+    transport.start()
+    while transport.tick < 64:
+        transport.advance()
+    first, second = [tuple(event.pitch for event in transport.events
+                           if event.instrument == "arp.fast" and start <= event.time < start + 8)
+                     for start in (0, 8)]
+    assert first != second
+    assert second == tuple(event.pitch for event in compose(seed=43) if event.instrument == "arp.fast")

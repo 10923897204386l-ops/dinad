@@ -20,6 +20,9 @@ class Result:
     error: bool = False
     location: tuple[int, int] | None = None
     response: bool = False
+    replaying: bool = False
+    can_save: bool = False
+    diagnostics: str = ""
 
 
 class PanelWorker:
@@ -33,22 +36,31 @@ class PanelWorker:
 
     def _snapshot(self, message: str, *, error=False, location=None, response=False) -> Result:
         transport = self.session.transport
-        return Result(transport.running, transport.session.project, transport.session.profile, transport.active_seed,
+        playback = self.session.playback
+        replaying = playback is not None and playback.running
+        output = playback.output if playback is not None else transport.output
+        return Result(transport.running or replaying, transport.session.project, transport.session.profile, transport.active_seed,
                       dict(self.session.documents),
-                      message, error, location, response)
+                      message, error, location, response, replaying,
+                      bool(transport.events and transport.events[0].time < transport.stop_time)
+                      and not transport.running, getattr(output, "diagnostics", ""))
 
     def _run(self) -> None:
         try:
             while not self.closing.is_set():
-                transport = self.session.transport
+                playback = self.session.playback
+                replaying = playback is not None and playback.running
+                transport = playback if replaying else self.session.transport
                 timeout = .05
                 if transport.running:
                     remaining = transport.deadline - transport.lead - transport.clock()
                     if remaining <= 0:
                         try:
-                            previous_seed = transport.active_seed
+                            previous_seed = getattr(transport, "active_seed", None)
                             transport.advance()
-                            if previous_seed != transport.active_seed:
+                            if not transport.running:
+                                self.results.put_nowait(self._snapshot("Replay finished"))
+                            elif previous_seed != getattr(transport, "active_seed", None):
                                 self.results.put_nowait(self._snapshot(f"Seed {transport.active_seed} active"))
                         except (ValueError, OSError, RuntimeError, OverflowError) as exc:
                             self.results.put_nowait(self._snapshot(str(exc), error=True))
@@ -67,6 +79,8 @@ class PanelWorker:
                 self.results.put_nowait(result)
         finally:
             try:
+                if self.session.playback is not None:
+                    self.session.playback.stop()
                 self.session.transport.stop()
             except (OSError, RuntimeError) as exc:
                 self.results.put_nowait(self._snapshot(str(exc), error=True))

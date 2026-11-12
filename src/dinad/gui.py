@@ -15,8 +15,9 @@ from PySide6.QtWidgets import (
 
 from dinad.config import PARAMETERS
 from dinad.editor import Document, EditorSession, stage_edit
-from dinad.execution import live_transport
+from dinad.execution import live_transport, load_take, play_take
 from dinad.panel_worker import PanelWorker
+from dinad.recording import save_take
 
 
 class TomlHighlight(QSyntaxHighlighter):
@@ -45,6 +46,7 @@ class Window(QMainWindow):
         self.file_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dinad-file")
         self.future = None
         self.pending = None
+        self.file_operation = None
         self.closing = False
         self.previous_focus = None
         self.kind = "project"
@@ -79,6 +81,20 @@ class Window(QMainWindow):
         self.profile_key.returnPressed.connect(self._profile_control)
         fields.addRow("Profile key", self.profile_key)
         layout.addLayout(fields)
+        take = QHBoxLayout()
+        self.take_path = QLineEdit()
+        self.take_path.setPlaceholderText("Path to take.json")
+        self.take_path.setAccessibleName("Take path")
+        self.capture_button = QPushButton("Save take  Ctrl+Shift+S")
+        self.replay_button = QPushButton("Replay take  Ctrl+Shift+P")
+        take.addWidget(self.take_path)
+        take.addWidget(self.capture_button)
+        take.addWidget(self.replay_button)
+        layout.addLayout(take)
+        self.audio_diagnostics = QLabel()
+        self.audio_diagnostics.setTextFormat(Qt.TextFormat.PlainText)
+        self.audio_diagnostics.setWordWrap(True)
+        layout.addWidget(self.audio_diagnostics)
         layout.addStretch()
         self.status = QLabel("Ready")
         self.status.setWordWrap(True)
@@ -117,11 +133,16 @@ class Window(QMainWindow):
         self.start_button.clicked.connect(self._start)
         self.stop_button.clicked.connect(self._stop)
         self.editor_button.clicked.connect(self.toggle_editor)
+        self.capture_button.clicked.connect(self._capture_take)
+        self.replay_button.clicked.connect(self._replay_take)
         self.shortcuts = [
             QShortcut(QKeySequence("F12"), self, activated=self.toggle_editor),
             QShortcut(QKeySequence.StandardKey.Save, self, activated=self._save),
             QShortcut(QKeySequence("Ctrl+Space"), self, activated=self._toggle_transport),
         ]
+        self.capture_shortcut = QShortcut(QKeySequence("Ctrl+Shift+S"), self, activated=self._capture_take)
+        self.replay_shortcut = QShortcut(QKeySequence("Ctrl+Shift+P"), self, activated=self._replay_take)
+        self.shortcuts.extend((self.capture_shortcut, self.replay_shortcut))
         self.grave_shortcut = QShortcut(QKeySequence("`"), self, activated=self.toggle_editor)
         self.grave_shortcut.setAutoRepeat(False)
         self.seed_shortcut = QShortcut(QKeySequence("Ctrl+R"), self, activated=self._focus_seed)
@@ -141,6 +162,8 @@ class Window(QMainWindow):
             self.overlay.setGeometry(0, 0, self.panel.width(), int(self.panel.height() * .82))
 
     def toggle_editor(self):
+        if self.state.replaying:
+            return
         if self.overlay.isVisible():
             self.overlay.hide()
             self._update_panel()
@@ -191,22 +214,31 @@ class Window(QMainWindow):
 
     def _update_panel(self):
         self.project_name.setText(f"Loop composition · {self.state.documents['project'].path.name}")
-        self.transport_status.setText("Playing" if self.state.running else "Stopped")
+        self.transport_status.setText("Replaying" if self.state.replaying else
+                                      "Playing" if self.state.running else "Stopped")
+        self.audio_diagnostics.setText(self.state.diagnostics)
         enabled = not self.busy and not self.closing
         panel_enabled = enabled and not self.overlay.isVisible()
         self.start_button.setEnabled(panel_enabled and not self.state.running)
         self.stop_button.setEnabled(panel_enabled and self.state.running)
-        self.editor_button.setEnabled(panel_enabled)
+        self.editor_button.setEnabled(panel_enabled and not self.state.replaying)
+        self.take_path.setEnabled(panel_enabled and not self.state.running)
+        self.capture_button.setEnabled(panel_enabled and not self.state.running and self.state.can_save)
+        self.replay_button.setEnabled(panel_enabled and not self.state.running)
+        self.capture_shortcut.setEnabled(self.capture_button.isEnabled())
+        self.replay_shortcut.setEnabled(self.replay_button.isEnabled())
         self.files.setEnabled(enabled)
         self.save_button.setEnabled(enabled)
         self.reload_button.setEnabled(enabled)
         self.editor.setReadOnly(not enabled)
-        self.profile_key.setEnabled(panel_enabled)
+        self.profile_key.setEnabled(panel_enabled and not self.state.replaying)
         self._refresh_profile_shortcuts()
         values = self.state.project.snapshot()
         seed = self.state.project.seed
         active = self.state.active_seed
-        if self.state.running and active != seed:
+        if self.state.replaying:
+            status = "Using the recorded notes and controls"
+        elif self.state.running and active != seed:
             status = f"Active seed {active} · Pending seed {seed}" if active is not None else f"Pending seed {seed}"
         elif self.state.running:
             status = f"Active seed {seed}"
@@ -214,7 +246,7 @@ class Window(QMainWindow):
             status = f"Seed {seed} for next start"
         self.seed_status.setText(status)
         for identifier, field in self.fields.items():
-            field.setEnabled(panel_enabled)
+            field.setEnabled(panel_enabled and not self.state.replaying)
             if not (field.hasFocus() and field.isModified()):
                 field.setText(str(values[identifier]))
 
@@ -244,7 +276,8 @@ class Window(QMainWindow):
         self._enable_profile_shortcuts()
 
     def _enable_profile_shortcuts(self, *_):
-        enabled = (not self.busy and not self.closing and not self.overlay.isVisible()
+        enabled = (not self.busy and not self.closing and not self.state.replaying
+                   and not self.overlay.isVisible()
                    and QApplication.activeModalWidget() is None
                    and not isinstance(QApplication.focusWidget(), QLineEdit))
         self.grave_shortcut.setEnabled(enabled)
@@ -258,6 +291,8 @@ class Window(QMainWindow):
         field.selectAll()
 
     def _send_profile_key(self, key):
+        if self.state.replaying:
+            return
         self._submit("profile key", lambda model: model.transport.control(f"key {shlex.quote(key)}"))
 
     def _submit(self, operation, command):
@@ -285,17 +320,42 @@ class Window(QMainWindow):
     def _start(self):
         def start(model):
             model.transport.start()
+            model.playback = None
             return "Started"
         self._submit("start", start)
 
     def _stop(self):
         def stop(model):
-            model.transport.stop()
+            if model.playback is not None and model.playback.running:
+                model.playback.stop()
+            else:
+                model.transport.stop()
             return "Stopped"
         self._submit("stop", stop)
 
     def _toggle_transport(self):
         self._stop() if self.state.running else self._start()
+
+    def _capture_take(self):
+        name = self.take_path.text().strip()
+        if not name:
+            self.status.setText("Enter a path for the take")
+            return
+        def capture(model):
+            path = Path(name).expanduser()
+            save_take(path, model.transport.recording())
+            return f"Saved take to {path}"
+
+        self._submit("capture take", capture)
+
+    def _replay_take(self):
+        name = self.take_path.text().strip()
+        if not name:
+            self.status.setText("Enter the path to a recorded take")
+            return
+        self.file_operation = "replay"
+        self.future = self.file_jobs.submit(load_take, Path(name))
+        self._update_panel()
 
     def _save(self):
         if not self.overlay.isVisible() or self.busy or self.closing:
@@ -332,13 +392,23 @@ class Window(QMainWindow):
     def _poll(self):
         if self.future is not None and self.future.done():
             future, self.future = self.future, None
+            operation, self.file_operation = self.file_operation, None
             try:
                 edit = future.result()
             except (OSError, ValueError, RuntimeError) as exc:
-                self._error(str(exc), getattr(exc, "location", None))
+                if operation == "replay":
+                    self.status.setText(str(exc))
+                else:
+                    self._error(str(exc), getattr(exc, "location", None))
                 self._update_panel()
             else:
-                self._submit("save", lambda model: model.apply(edit))
+                if operation == "replay":
+                    def replay(model):
+                        model.playback = play_take(model.transport, edit)
+                        return "Replaying recorded notes and controls"
+                    self._submit("replay", replay)
+                else:
+                    self._submit("save", lambda model: model.apply(edit))
         while True:
             try:
                 result = self.worker.results.get_nowait()

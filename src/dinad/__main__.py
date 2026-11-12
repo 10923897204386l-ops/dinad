@@ -16,7 +16,7 @@ import time
 from dinad.config import PARAMETERS, Profile, Project, load_profile, load_project
 from dinad.controls import Session
 from dinad.execution import live_transport, play_history, render_history, replay_history
-from dinad.recording import decode
+from dinad.recording import decode, save_take
 from dinad.registry import BUILTINS, load_module_config
 
 
@@ -60,20 +60,6 @@ def _session(session: Session) -> int:
             print(f"error: {exc}", file=sys.stderr)
             failed = True
     return 1 if failed else 0
-
-
-def _save_new(path: Path, text: str) -> None:
-    """Publish a complete new history atomically without replacing prior takes."""
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                         prefix=".dinad-", delete=False) as stream:
-            temporary = Path(stream.name)
-            stream.write(text)
-        os.link(temporary, path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
 
 
 def _read_input(origin: float = 0.) -> queue.Queue:
@@ -142,7 +128,7 @@ def _capture(performance, output: Path) -> int:
                 failed = True
     except KeyboardInterrupt:
         stop = min(time.monotonic() - origin, performance.end_time)
-    _save_new(output, performance.recording(stop))
+    save_take(output, performance.recording(stop))
     print(f"Saved timed performance to {output}", file=sys.stderr)
     return 1 if failed else 0
 
@@ -184,7 +170,7 @@ def _live(transport) -> int:
                         transport.replace_project(load_project(path))
                         print("Project replaced", flush=True)
                     else:
-                        _save_new(path, transport.recording())
+                        save_take(path, transport.recording())
                         print("Take saved", flush=True)
                 else:
                     result = transport.control(line, received)
@@ -307,7 +293,7 @@ def main() -> int:
             if args.command == "capture":
                 return _capture(Performance(project, profile), args.output)
             performance = load_performance(args.timeline, project, profile)
-            _save_new(args.output, performance.recording())
+            save_take(args.output, performance.recording())
             print(f"Saved timed performance to {args.output}")
         elif args.command in ("render", "play"):
             recording = args.recording.read_text(encoding="utf-8")

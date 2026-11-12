@@ -39,8 +39,11 @@ class Project:
     anchor: float = 48
     tempo: float = 120
     seed: int = 0
+    evolve: bool = False
 
     def __post_init__(self) -> None:
+        if type(self.evolve) is not bool:
+            raise ValueError("generation.evolve must be a boolean")
         for identifier, parameter in PARAMETERS.items():
             parameter.validate(getattr(self, parameter.attribute), identifier)
         object.__setattr__(self, "anchor", float(self.anchor))
@@ -119,7 +122,10 @@ def load_project(path: Path) -> Project:
             ("generation", "generation.seed"),
         ):
             field = identifier.split(".")[1]
-            table = _table(document.get(section, {}), {field}, section)
+            allowed = {field, "evolve"} if section == "generation" else {field}
+            table = _table(document.get(section, {}), allowed, section)
+            if section == "generation" and "evolve" in table:
+                values["evolve"] = table["evolve"]
             if field in table:
                 values[PARAMETERS[identifier].attribute] = table[field]
         return Project(**values)
