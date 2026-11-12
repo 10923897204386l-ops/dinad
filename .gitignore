@@ -26,3 +26,5 @@ recordings/
 *.opus
 *.mid
 *.midi
+
+/tools/lv2/dinad-epiano

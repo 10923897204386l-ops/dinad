@@ -10,7 +10,8 @@ from dinad.config import Profile, Project
 from dinad.engine import replay
 from dinad.events import Event
 from dinad.modules import Capability, LiveProvider, NoteAdapter, OfflineRenderer, ParameterValue, ScheduledPlayer
-from dinad.registry import BUILTINS, ModuleSelection
+from dinad.registry import BUILTINS, ModuleConfig, ModuleSelection
+from dinad.lv2_epiano import EPianoLive
 from dinad.transport import Transport
 
 
@@ -44,13 +45,18 @@ def replay_history(events: tuple[Event, ...], *, module: ModuleSelection | None 
 def render_history(events: tuple[Event, ...], output: Path, *, sample_rate: int | None = None,
                    tail: float | None = None, sclang: str = "sclang", scsynth: str = "scsynth",
                    library: Path | None = None, plugins: Path | None = None,
-                   timeout: float = 60, module: ModuleSelection | None = None) -> dict:
+                   timeout: float = 60, module: ModuleSelection | None = None,
+                   module_state: dict | None = None) -> dict:
     overrides = {key: value for key, value in (("sample_rate", sample_rate), ("tail", tail))
                  if value is not None}
     with _staged(events, module, "dinad.supercollider", Capability.OFFLINE_RENDER, overrides) as adapter:
         assert isinstance(adapter, OfflineRenderer)
+        options = {}
+        if module_state is not None:
+            adapter.descriptor.require(Capability.STATE_RESTORE)
+            options["module_state"] = module_state
         return adapter.render(output, sclang=sclang, scsynth=scsynth, library=library,
-                              plugins=plugins, timeout=timeout)
+                              plugins=plugins, timeout=timeout, **options)
 
 
 def play_history(events: tuple[Event, ...], output: Path, *, sample_rate: int | None = None,
@@ -68,7 +74,10 @@ def play_history(events: tuple[Event, ...], output: Path, *, sample_rate: int | 
 
 def live_transport(project: Project, profile: Profile, *, backend: str | None,
                    exclusive: bool, port: int, sample_rate: int | None,
-                   sclang: str, library: Path | None, module: ModuleSelection | None = None) -> Transport:
+                   sclang: str, library: Path | None, module: ModuleSelection | None = None,
+                   module_config: ModuleConfig | None = None) -> Transport:
+    if module_config is not None:
+        module = module_config.operations.get("live")
     if module is not None and backend is not None:
         raise ValueError("select the live backend in TOML or with --backend")
     selection = module or ModuleSelection(BUILTINS.require(f"dinad.{backend or 'mock'}"), {})
@@ -84,4 +93,18 @@ def live_transport(project: Project, profile: Profile, *, backend: str | None,
         output = adapter.live_output(exclusive=exclusive, port=port, sclang=sclang, library=library)
     finally:
         adapter.close()
-    return Transport(project, profile, output, time.monotonic, lead=output.lead)
+    transport = Transport(project, profile, output, time.monotonic, lead=output.lead)
+    if isinstance(output, EPianoLive):
+        transport.output_metadata = output.metadata
+    if module_config is not None and module_config.bindings:
+        if not isinstance(output, EPianoLive):
+            raise ValueError("selected live provider cannot apply parameter bindings")
+        if any(target.module_id != selection.registration.descriptor.identifier
+               for binding in module_config.bindings for target in binding.targets):
+            raise ValueError("all live binding targets must belong to the selected provider")
+
+        def configure(project: Project) -> None:
+            output.set_controls({update.native_id: update.value for update in module_config.resolve(project)})
+
+        transport.before_onset = configure
+    return transport

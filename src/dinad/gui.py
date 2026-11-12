@@ -383,10 +383,10 @@ def launch(args) -> int:
         if path is not None:
             documents[kind] = Document.read(kind, path)
 
-    def factory(project, profile, module):
+    def factory(project, profile, module_config):
         return live_transport(project, profile, backend=args.backend, exclusive=args.exclusive_server,
                               port=args.port, sample_rate=args.sample_rate, sclang=args.sclang,
-                              library=args.library, module=module)
+                              library=args.library, module_config=module_config)
 
     worker = PanelWorker(EditorSession(documents, factory))
     app = QApplication.instance() or QApplication(["DINAD"])

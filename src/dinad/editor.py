@@ -9,7 +9,7 @@ import tomllib
 from typing import Callable
 
 from dinad.config import Profile, Project, load_profile, load_project
-from dinad.registry import ModuleConfig, ModuleSelection, load_module_config
+from dinad.registry import ModuleConfig, load_module_config
 from dinad.transport import Transport
 
 
@@ -112,18 +112,18 @@ class EditorSession:
     """Owns the live transport and publishes config only after the file commit."""
 
     def __init__(self, documents: dict[str, Document],
-                 factory: Callable[[Project, Profile, ModuleSelection | None], Transport]):
+                 factory: Callable[[Project, Profile, ModuleConfig | None], Transport]):
         self.documents = documents
         self.factory = factory
         loaded = {kind: LOADERS[kind](doc.path) for kind, doc in documents.items()}
         if any(doc.path.read_bytes() != doc.content for doc in documents.values()):
             raise EditError("Configuration changed while opening the editor. Reopen it to load the latest version.")
         self.modules = loaded.get("modules")
-        self.transport = factory(loaded["project"], loaded.get("profile", Profile()), self.selection)
+        self.transport = factory(loaded["project"], loaded.get("profile", Profile()), self.modules)
 
     @property
-    def selection(self) -> ModuleSelection | None:
-        return self.modules.operations.get("live") if self.modules else None
+    def live_config(self) -> tuple:
+        return (self.modules.operations.get("live"), self.modules.bindings) if self.modules else (None, ())
 
     def apply(self, edit: StagedEdit) -> str:
         candidate = edit.candidate
@@ -134,11 +134,10 @@ class EditorSession:
             if self.documents.get(edit.original.kind) != edit.original:
                 raise EditError("Editor snapshot is stale. Reload before saving.")
             if isinstance(candidate, ModuleConfig):
-                selection = candidate.operations.get("live")
-                if selection != self.selection:
+                if (candidate.operations.get("live"), candidate.bindings) != self.live_config:
                     if transport.running:
-                        raise EditError("Live provider or settings changed. Stop playback, then save again to rebuild.")
-                    replacement = self.factory(transport.session.project, transport.session.profile, selection)
+                        raise EditError("Live provider, settings or bindings changed. Stop playback, then save again to rebuild.")
+                    replacement = self.factory(transport.session.project, transport.session.profile, candidate)
             else:
                 project = candidate if isinstance(candidate, Project) else transport.session.project
                 profile = candidate if isinstance(candidate, Profile) else transport.session.profile

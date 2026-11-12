@@ -14,6 +14,7 @@ from dinad.modules import (
     ParameterValue, SemanticBinding, _text,
 )
 from dinad.supercollider import Settings, SuperColliderBackend
+from dinad.lv2_epiano import EPianoBackend, LIVE_SETTINGS as EPIANO_LIVE_SETTINGS, SETTINGS as EPIANO_SETTINGS
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ BUILTINS = Registry((
     Registration(SuperColliderBackend.descriptor,
                  lambda settings: SuperColliderBackend(Settings(**settings)),
                  frozenset({"sample_rate", "tail", "preroll"}), frozenset({"sample_rate"})),
+    Registration(EPianoBackend.descriptor, EPianoBackend, EPIANO_SETTINGS, EPIANO_LIVE_SETTINGS),
 ))
 
 OPERATIONS = MappingProxyType({
