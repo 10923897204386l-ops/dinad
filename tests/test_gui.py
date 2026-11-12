@@ -37,6 +37,12 @@ def test_f12_save_validation_focus_and_reload(tmp_path, monkeypatch):
         assert app.focusWidget() is window.editor
         QTest.keyClick(window.editor, Qt.Key.Key_QuoteLeft)
         assert window.overlay.isVisible() and "`" in window.editor.toPlainText()
+        QTest.keyClick(window.editor, Qt.Key.Key_Escape)
+        assert not window.overlay.isVisible() and window.state.running
+        assert app.focusWidget() is window.stop_button
+        QTest.keyClick(window.stop_button, Qt.Key.Key_QuoteLeft)
+        assert window.overlay.isVisible() and window.dirty
+        assert "`" in window.editor.toPlainText()
         window.editor.setPlainText("schema_version = 1\nanchor = ]\n")
         QTest.keyClick(window.editor, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier)
         wait_for(lambda: not window.busy)
@@ -91,3 +97,35 @@ def test_f12_save_validation_focus_and_reload(tmp_path, monkeypatch):
         window.close()
         wait_for(lambda: not window.worker.thread.is_alive())
         QTest.qWait(30)
+
+
+def test_performance_panel_saves_take_and_reports_incompatible_replay(tmp_path):
+    from dinad.recording import decode
+
+    app = QApplication.instance() or QApplication([])
+    session = model(tmp_path)
+    session.transport.clock = time.monotonic
+    window = Window(PanelWorker(session))
+    window.show()
+    try:
+        window.start_button.click()
+        wait_for(lambda: window.state.active_seed is not None)
+        QTest.qWait(150)
+        window.stop_button.click()
+        wait_for(lambda: window.state.can_save)
+        take = tmp_path / "performance.json"
+        window.take_path.setText(str(take))
+        window.capture_button.click()
+        wait_for(lambda: not window.busy)
+        assert decode(take.read_text())
+        before = take.read_bytes()
+        window.capture_button.click()
+        wait_for(lambda: not window.busy)
+        assert take.read_bytes() == before
+        window.replay_button.click()
+        wait_for(lambda: not window.busy)
+        assert "select the DINAD ePiano" in window.status.text()
+        assert not window.state.running
+    finally:
+        window.close()
+        wait_for(lambda: not window.isVisible())

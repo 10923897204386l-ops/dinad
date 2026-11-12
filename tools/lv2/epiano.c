@@ -293,7 +293,7 @@ static bool read_events(Event *events, unsigned count, uint64_t *previous) {
     return true;
 }
 
-static int live(Host *host) {
+static int live(Host *host, const char *left, const char *right) {
     jack_status_t status;
     host->jack = jack_client_open("DINAD-EPiano", JackNoStartServer | JackUseExactName, &status);
     if (!host->jack) return 1;
@@ -319,6 +319,11 @@ static int live(Host *host) {
     struct timespec startup = {.tv_nsec = 150000000};
     nanosleep(&startup, NULL);
     if (atomic_load(&host->lost)) return 1;
+    if (left && (jack_connect(host->jack, jack_port_name(host->left), left) ||
+                 jack_connect(host->jack, jack_port_name(host->right), right))) {
+        fprintf(stderr, "Unable to connect configured ePiano JACK destinations: %s / %s.\n", left, right);
+        return 1;
+    }
     puts("READY");
     fflush(stdout);
     setvbuf(stdin, NULL, _IONBF, 0);
@@ -344,11 +349,14 @@ static int live(Host *host) {
         puts("OK");
         fflush(stdout);
     }
+    float dsp_load = atomic_load(&host->lost) ? 0 : jack_cpu_load(host->jack);
     atomic_store(&host->stopping, true);
     struct timespec release = {.tv_nsec = 500000000};
     if (!atomic_load(&host->lost)) nanosleep(&release, NULL);
     fprintf(stderr, "EPiano live counters: %u late events, %u playback xruns, %u startup xruns\n",
             atomic_load(&host->late), atomic_load(&host->xruns), atomic_load(&host->startup_xruns));
+    if (!atomic_load(&host->lost))
+        fprintf(stderr, "JACK graph DSP load at stop: %.1f%%\n", dsp_load);
     return result || atomic_load(&host->lost) || !atomic_load(&host->released);
 }
 
@@ -390,10 +398,11 @@ static int render(Host *host, const char *path, uint64_t frames) {
 
 int main(int argc, char **argv) {
     bool probe = argc == 2 && !strcmp(argv[1], "probe");
-    bool realtime = argc == 2 + CONTROLS + 1 && !strcmp(argv[1], "live");
+    bool routed = argc == 5 + CONTROLS;
+    bool realtime = (argc == 3 + CONTROLS || routed) && !strcmp(argv[1], "live");
     bool offline = argc == 2 + CONTROLS + 3 && !strcmp(argv[1], "render");
     if (!probe && !realtime && !offline) {
-        fprintf(stderr, "Expected probe, live RATE CONTROLS, or render RATE PATH FRAMES CONTROLS.\n");
+        fprintf(stderr, "Expected probe, live RATE CONTROLS [LEFT RIGHT], or render RATE PATH FRAMES CONTROLS.\n");
         return 2;
     }
     Host host = {0};
@@ -423,7 +432,8 @@ int main(int argc, char **argv) {
     clear_sequence(&host);
     lilv_instance_connect_port(host.plugin, 14, sequence(&host));
     lilv_instance_activate(host.plugin);
-    result = realtime ? live(&host) : render(&host, argv[3], frames);
+    result = realtime ? live(&host, routed ? argv[3 + CONTROLS] : NULL,
+                             routed ? argv[4 + CONTROLS] : NULL) : render(&host, argv[3], frames);
 done:
     if (host.jack) jack_client_close(host.jack);
     if (host.queue) jack_ringbuffer_free(host.queue);

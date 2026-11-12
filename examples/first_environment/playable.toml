@@ -1,0 +1,12 @@
+# Playable demo with a new deterministic fast arpeggio each cycle.
+schema_version = 1
+
+[composition]
+anchor = 48
+
+[transport]
+tempo_bpm = 120
+
+[generation]
+seed = 42
+evolve = true

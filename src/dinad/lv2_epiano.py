@@ -39,7 +39,7 @@ PORTS = (
 )
 PORT_INDEX = {symbol: index for index, (symbol, _, _) in enumerate(PORTS)}
 SETTINGS = frozenset((*PORT_INDEX, "sample_rate", "tail", "helper"))
-LIVE_SETTINGS = SETTINGS - {"tail"}
+LIVE_SETTINGS = (SETTINGS - {"tail"}) | {"output_left", "output_right"}
 AUDIO_CAPABILITIES = frozenset({Capability.CONTINUOUS_TRANSPORT, Capability.OFFLINE_RENDER})
 
 
@@ -134,6 +134,9 @@ class EPianoLive:
 
     def __init__(self, values: dict[str, ParameterValue]):
         self.initial = values.copy()
+        self.destinations = (str(values.get("output_left", "")), str(values.get("output_right", "")))
+        if any(self.destinations) and (not all(self.destinations) or self.destinations[0] == self.destinations[1]):
+            raise ValueError("set two distinct ePiano stereo destination ports")
         self.values = values.copy()
         self.automation: list[tuple[float, dict[str, ParameterValue]]] = []
         self.rate = int(values["sample_rate"])
@@ -171,7 +174,8 @@ class EPianoLive:
         self.log = TemporaryFile()
         try:
             self.process = subprocess.Popen(
-                [executable, "live", str(self.rate), *_values(self.initial)],
+                [executable, "live", str(self.rate), *_values(self.initial),
+                 *(self.destinations if all(self.destinations) else ())],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log,
             )
             self._read_ack(b"READY")
@@ -253,6 +257,8 @@ class EPianoBackend(StagedLifecycle):
             ParameterDescriptor("helper", "Headless helper", ParameterType.STRING, "dinad-epiano", readable=True),
             ParameterDescriptor("sample_rate", "Sample rate", ParameterType.INTEGER, 48000, 8000, 192000,
                                 "Hz", readable=True),
+            ParameterDescriptor("output_left", "Left JACK destination", ParameterType.STRING, "", readable=True),
+            ParameterDescriptor("output_right", "Right JACK destination", ParameterType.STRING, "", readable=True),
             ParameterDescriptor("tail", "Render tail", ParameterType.FLOAT, 2., .5, 60., "s", readable=True),
             *(ParameterDescriptor(symbol, label, ParameterType.BOOLEAN if type(default) is bool else ParameterType.FLOAT,
                                   default, **({} if type(default) is bool else {"minimum": 0., "maximum": 1.}),
@@ -295,17 +301,19 @@ class EPianoBackend(StagedLifecycle):
         self._require_ready()
         return EPianoLive(self.values)
 
-    def _restore(self, state: dict, end: float, rate: int) -> list[str]:
+    @classmethod
+    def restore_controls(cls, state: dict, end: float) -> tuple[
+            dict[str, ParameterValue], list[tuple[float, dict[str, ParameterValue]]]]:
         if (state.get("schema"), state.get("module_id"), state.get("version")) != (
-                STATE_SCHEMA, IDENTIFIER, self.version):
+                STATE_SCHEMA, IDENTIFIER, cls.version):
             raise ValueError("recorded ePiano state is incompatible")
         controls, changes = state.get("controls"), state.get("automation")
         if not isinstance(controls, dict) or controls.keys() != PORT_INDEX.keys() or not isinstance(changes, list):
             raise ValueError("invalid recorded ePiano controls or automation")
         for key, value in controls.items():
-            self.descriptor.parameter(key).validate(value)
+            cls.descriptor.parameter(key).validate(value)
         previous = 0.
-        lines = []
+        automation = []
         for change in changes:
             if not isinstance(change, dict) or not isinstance(change.get("values"), dict):
                 raise ValueError("invalid recorded ePiano parameter change")
@@ -317,10 +325,9 @@ class EPianoBackend(StagedLifecycle):
             for key, value in change["values"].items():
                 if key not in PORT_INDEX:
                     raise ValueError(f"invalid recorded ePiano parameter {key!r}")
-                self.descriptor.parameter(key).validate(value)
-                lines.append(f"p {round(seconds * rate)} {PORT_INDEX[key]} {float(value)}")
-        self.values.update(controls)
-        return lines
+                cls.descriptor.parameter(key).validate(value)
+            automation.append((seconds, change["values"]))
+        return controls, automation
 
     def render(self, output: Path, *, timeout: float = 60,
                module_state: dict | None = None, **options) -> dict:
@@ -341,7 +348,10 @@ class EPianoBackend(StagedLifecycle):
             _finite(stop, "stop time")
             if not end - 1e-8 <= stop <= 3600:
                 raise ValueError("recorded ePiano stop time is invalid")
-            lines.extend(self._restore(module_state, stop, rate))
+            controls, automation = self.restore_controls(module_state, stop)
+            self.values.update(controls)
+            lines.extend(f"p {round(seconds * rate)} {PORT_INDEX[key]} {float(value)}"
+                         for seconds, values in automation for key, value in values.items())
             lines.sort(key=lambda line: (int(line.split()[1]), line[0] != "p"))
             end = stop
         frames = math.ceil((end + float(self.values["tail"])) * rate)
@@ -363,5 +373,5 @@ class EPianoBackend(StagedLifecycle):
                                   require_signal=bool(self.history.events))
             os.link(wav, output)
         return {"backend": self.version, "plugin": PLUGIN_URI, "event_count": len(self.history.events),
-                "settings": {key: value for key, value in self.values.items() if key != "helper"},
+                "settings": {key: value for key, value in self.values.items() if key in SETTINGS and key != "helper"},
                 "audio": metrics}

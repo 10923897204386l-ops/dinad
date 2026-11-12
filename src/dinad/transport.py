@@ -9,6 +9,7 @@ from dinad.controls import Session
 from dinad.demo import compose
 from dinad.events import Event
 from dinad.recording import encode
+from dinad.modules import ParameterValue
 
 
 class LiveOutput(Protocol):
@@ -52,14 +53,16 @@ class Transport:
         self.initial_project = self.take_project = project
         self.pattern = self._pattern(project)
 
-    def _pattern(self, project: Project) -> tuple[Event, ...]:
-        pattern = compose(project.seed, project.anchor, 60)
+    def _pattern(self, project: Project, tick: int = 0) -> tuple[Event, ...]:
+        seed = (project.seed + tick // 32) % 2**63 if project.evolve else project.seed
+        pattern = compose(seed, project.anchor, 60)
         self.output.validate(pattern)
         return pattern
 
     def start(self) -> None:
         if self.running:
             raise ValueError("transport is already running")
+        self.pattern = self._pattern(self.session.project)
         self.output.open()
         self.origin = self.clock() + self.lead
         self.tick = 0
@@ -87,6 +90,8 @@ class Transport:
         starts = ()
         if at == self.onset:
             seconds_per_beat = 60 / self.session.project.tempo
+            if self.session.project.evolve and self.tick and self.tick % 32 == 0:
+                self.pattern = self._pattern(self.session.project, self.tick)
             beat = (self.tick % 32) / 2
             notes = [replace(note, time=at, duration=note.duration * seconds_per_beat)
                      for note in self.pattern if note.time == beat]
@@ -116,7 +121,7 @@ class Transport:
 
         def validate(candidate: Project) -> None:
             nonlocal pattern
-            pattern = self._pattern(candidate)
+            pattern = self._pattern(candidate, self.tick if self.running else 0)
 
         count = len(self.session.changes)
         result = self.session.execute(command, validate=validate)
@@ -130,13 +135,14 @@ class Transport:
 
     def prepare_edit(self, project: Project, profile: Profile) -> Callable[[], None]:
         """Validate a full edit and return its in-memory commit for this scheduler turn."""
-        pattern = self._pattern(project)
+        pattern = self._pattern(project, self.tick if self.running else 0)
         session = Session(project, profile)
         old = self.session.project.snapshot()
         changes = []
         if self.running:
             received = max(0., self.clock() - self.origin)
-            for identifier, value in project.snapshot().items():
+            old["generation.evolve"] = self.session.project.evolve
+            for identifier, value in {**project.snapshot(), "generation.evolve": project.evolve}.items():
                 if value != old[identifier]:
                     changes.append({"sequence": len(self.actions) + len(changes), "kind": "config",
                                     "parameter": identifier, "old": old[identifier], "new": value,
@@ -181,7 +187,67 @@ class Transport:
             **output_metadata,
             "generator": "m1-continuous-demo-v1",
             "project": self.take_project.snapshot(),
+            **({"generation_evolves": True} if self.initial_project.evolve else {}),
             "live_controls": {"schema_version": 1, "stop_seconds": self.stop_time,
                               "initial_project": self.initial_project.snapshot(),
                               "changes": self.actions},
         })
+
+
+class TakePlayback:
+    """Schedule resolved notes and recorded automation through a separate live output."""
+
+    def __init__(self, output: LiveOutput, clock: Callable[[], float],
+                 events: tuple[Event, ...], end: float,
+                 automation: list[tuple[float, dict[str, ParameterValue]]],
+                 set_controls: Callable[[dict[str, ParameterValue]], None]):
+        output.validate(events)
+        self.output = output
+        self.clock = clock
+        self.lead = output.lead
+        self.set_controls = set_controls
+        self.active: set[int] = set()
+        batches = {}
+
+        def batch(at):
+            return batches.setdefault(at, ([], [], {}))
+
+        for node, event in enumerate(events, 1002):
+            batch(event.time)[1].append((node, event))
+            batch(event.time + event.duration)[0].append(node)
+        for at, values in automation:
+            batch(at)[2].update(values)
+        self.batches = iter(sorted(batches.items()))
+        self.next_batch = next(self.batches, None)
+        self.end = end
+        self.output.open()
+        self.origin = self.clock() + self.lead
+        self.running = True
+
+    @property
+    def deadline(self) -> float:
+        if self.next_batch is None:
+            # The worker subtracts lead when waking. Close only after playback.
+            return self.origin + self.end + self.lead
+        return self.origin + self.next_batch[0]
+
+    def advance(self) -> None:
+        if self.next_batch is None:
+            self.stop()
+            return
+        at, (releases, starts, controls) = self.next_batch
+        try:
+            if controls:
+                self.set_controls(controls)
+            self.output.send(self.origin + at, tuple(releases), tuple(starts))
+        except (ValueError, OSError, RuntimeError, OverflowError):
+            self.stop()
+            raise
+        self.active.difference_update(releases)
+        self.active.update(node for node, _ in starts)
+        self.next_batch = next(self.batches, None)
+
+    def stop(self) -> None:
+        if self.running:
+            self.running = False
+            self.output.close(tuple(sorted(self.active)))

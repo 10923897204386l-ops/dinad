@@ -11,8 +11,10 @@ from dinad.engine import replay
 from dinad.events import Event
 from dinad.modules import Capability, LiveProvider, NoteAdapter, OfflineRenderer, ParameterValue, ScheduledPlayer
 from dinad.registry import BUILTINS, ModuleConfig, ModuleSelection
-from dinad.lv2_epiano import EPianoLive
-from dinad.transport import Transport
+from dinad.lv2_epiano import EPianoBackend, EPianoLive
+from dinad.objects import _finite
+from dinad.recording import decode_take
+from dinad.transport import TakePlayback, Transport
 
 
 @contextmanager
@@ -108,3 +110,30 @@ def live_transport(project: Project, profile: Profile, *, backend: str | None,
 
         transport.before_onset = configure
     return transport
+
+
+def play_take(transport: Transport, take: tuple[tuple[Event, ...], dict]) -> TakePlayback:
+    if transport.running:
+        raise ValueError("stop the performance before replaying a take")
+    output = transport.output
+    if not isinstance(output, EPianoLive):
+        raise ValueError("select the DINAD ePiano live module to replay a take")
+    events, metadata = take
+    if len(events) > 100000:
+        raise ValueError("live take exceeds the 100000-note limit")
+    state = metadata.get("module_state")
+    if not events or not isinstance(state, dict):
+        raise ValueError("select a nonempty DINAD ePiano take with recorded module state")
+    last_release = max(event.time + event.duration for event in events)
+    stop = state.get("stop_seconds", last_release)
+    _finite(stop, "take stop time")
+    if not last_release - 1e-8 <= stop <= 3600:
+        raise ValueError("recorded ePiano stop time is invalid")
+    controls, automation = EPianoBackend.restore_controls(state, stop)
+    playback = EPianoLive({**output.initial, **controls})
+    return TakePlayback(playback, transport.clock, events, max(stop, last_release) + .25,
+                        automation, playback.set_controls)
+
+
+def load_take(path: Path) -> tuple[tuple[Event, ...], dict]:
+    return decode_take(path.expanduser().read_text(encoding="utf-8"))

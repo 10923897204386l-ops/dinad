@@ -26,7 +26,7 @@ class Registration:
 
     def validate_settings(self, values: Mapping[str, ParameterValue]) -> None:
         for name, value in values.items():
-            if name not in self.settings:
+            if name not in (self.settings | self.live_settings):
                 raise ValueError(f"{self.descriptor.identifier}: unknown constructor setting {name!r}")
             self.descriptor.parameter(name).validate(value)
 
