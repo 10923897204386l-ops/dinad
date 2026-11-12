@@ -203,3 +203,28 @@ def test_interrupt_during_release_still_frees_reserved_group(monkeypatch):
         driver.close((1002,))
     assert commands == [("/n_set", 1002, "gate", 0), ("/n_free", 1000)]
     assert driver._connection is None and not driver._owns_group
+
+
+def test_seed_is_pending_until_next_onset_and_history_is_repeatable():
+    histories = []
+    for _ in range(2):
+        transport, output, clock = setup()
+        until(transport, clock, .1)
+        assert transport.active_seed == 0
+        previous = tuple(transport.events)
+        active = dict(transport.active)
+        for value in ("-1", "1.5"):
+            with pytest.raises(ValueError):
+                transport.control(f"set generation.seed {value}")
+        transport.control("set generation.seed 42")
+        assert transport.session.project.seed == 42 and transport.active_seed == 0
+        assert tuple(transport.events) == previous and transport.active == active
+        until(transport, clock, .21)  # Release only.
+        assert transport.active_seed == 0
+        until(transport, clock, 2.)
+        assert transport.active_seed == 42
+        assert tuple(transport.events[:len(previous)]) == previous
+        assert output.opened == 1
+        transport.stop()
+        histories.append(transport.recording())
+    assert histories[0] == histories[1]

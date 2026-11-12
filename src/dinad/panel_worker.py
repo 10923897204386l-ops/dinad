@@ -14,6 +14,7 @@ class Result:
     running: bool
     project: Project
     profile: Profile
+    active_seed: int | None
     documents: dict[str, Document]
     message: str
     error: bool = False
@@ -32,7 +33,7 @@ class PanelWorker:
 
     def _snapshot(self, message: str, *, error=False, location=None, response=False) -> Result:
         transport = self.session.transport
-        return Result(transport.running, transport.session.project, transport.session.profile,
+        return Result(transport.running, transport.session.project, transport.session.profile, transport.active_seed,
                       dict(self.session.documents),
                       message, error, location, response)
 
@@ -45,7 +46,10 @@ class PanelWorker:
                     remaining = transport.deadline - transport.lead - transport.clock()
                     if remaining <= 0:
                         try:
+                            previous_seed = transport.active_seed
                             transport.advance()
+                            if previous_seed != transport.active_seed:
+                                self.results.put_nowait(self._snapshot(f"Seed {transport.active_seed} active"))
                         except (ValueError, OSError, RuntimeError, OverflowError) as exc:
                             self.results.put_nowait(self._snapshot(str(exc), error=True))
                         continue

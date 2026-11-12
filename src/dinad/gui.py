@@ -60,7 +60,7 @@ class Window(QMainWindow):
         buttons = QHBoxLayout()
         self.start_button = QPushButton("Start")
         self.stop_button = QPushButton("Stop")
-        self.editor_button = QPushButton("Configuration  F12")
+        self.editor_button = QPushButton("Configuration  ` / F12")
         for button in (self.start_button, self.stop_button, self.editor_button):
             buttons.addWidget(button)
         layout.addLayout(buttons)
@@ -69,8 +69,11 @@ class Window(QMainWindow):
         for identifier, descriptor in PARAMETERS.items():
             field = QLineEdit()
             field.returnPressed.connect(lambda key=identifier: self._control(key))
-            fields.addRow(descriptor.label, field)
+            label = "Seed (Ctrl+R)" if identifier == "generation.seed" else descriptor.label
+            fields.addRow(label, field)
             self.fields[identifier] = field
+        self.seed_status = QLabel()
+        fields.addRow(self.seed_status)
         self.profile_key = QLineEdit()
         self.profile_key.setPlaceholderText("Enter a key from the loaded profile")
         self.profile_key.returnPressed.connect(self._profile_control)
@@ -119,6 +122,10 @@ class Window(QMainWindow):
             QShortcut(QKeySequence.StandardKey.Save, self, activated=self._save),
             QShortcut(QKeySequence("Ctrl+Space"), self, activated=self._toggle_transport),
         ]
+        self.grave_shortcut = QShortcut(QKeySequence("`"), self, activated=self.toggle_editor)
+        self.grave_shortcut.setAutoRepeat(False)
+        self.seed_shortcut = QShortcut(QKeySequence("Ctrl+R"), self, activated=self._focus_seed)
+        self.shortcuts.extend((self.grave_shortcut, self.seed_shortcut))
         self.profile_shortcuts = []
         self.shortcut_bindings = None
         QApplication.instance().focusChanged.connect(self._enable_profile_shortcuts)
@@ -197,9 +204,19 @@ class Window(QMainWindow):
         self.profile_key.setEnabled(panel_enabled)
         self._refresh_profile_shortcuts()
         values = self.state.project.snapshot()
+        seed = self.state.project.seed
+        active = self.state.active_seed
+        if self.state.running and active != seed:
+            status = f"Active seed {active} · Pending seed {seed}" if active is not None else f"Pending seed {seed}"
+        elif self.state.running:
+            status = f"Active seed {seed}"
+        else:
+            status = f"Seed {seed} for next start"
+        self.seed_status.setText(status)
         for identifier, field in self.fields.items():
             field.setEnabled(panel_enabled)
-            field.setText(str(values[identifier]))
+            if not (field.hasFocus() and field.isModified()):
+                field.setText(str(values[identifier]))
 
     def _refresh_profile_shortcuts(self):
         bindings = self.state.profile.bindings
@@ -228,9 +245,17 @@ class Window(QMainWindow):
 
     def _enable_profile_shortcuts(self, *_):
         enabled = (not self.busy and not self.closing and not self.overlay.isVisible()
+                   and QApplication.activeModalWidget() is None
                    and not isinstance(QApplication.focusWidget(), QLineEdit))
+        self.grave_shortcut.setEnabled(enabled)
+        self.seed_shortcut.setEnabled(enabled)
         for shortcut in self.profile_shortcuts:
             shortcut.setEnabled(enabled)
+
+    def _focus_seed(self):
+        field = self.fields["generation.seed"]
+        field.setFocus()
+        field.selectAll()
 
     def _send_profile_key(self, key):
         self._submit("profile key", lambda model: model.transport.control(f"key {shlex.quote(key)}"))
@@ -246,6 +271,8 @@ class Window(QMainWindow):
         value = self.fields[identifier].text()
         def apply(model):
             model.transport.control(f"set {identifier} {value}")
+            if identifier == "generation.seed" and model.transport.running:
+                return "Seed change queued for the next unscheduled onset"
             return f"{PARAMETERS[identifier].label} applied"
         self._submit("control", apply)
 

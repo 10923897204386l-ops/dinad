@@ -31,9 +31,12 @@ def test_f12_save_validation_focus_and_reload(tmp_path, monkeypatch):
     try:
         QTest.keyClick(window, Qt.Key.Key_Space, Qt.KeyboardModifier.ControlModifier)
         wait_for(lambda: window.state.running)
-        QTest.keyClick(window, Qt.Key.Key_F12)
+        window.stop_button.setFocus()
+        QTest.keyClick(window.stop_button, Qt.Key.Key_QuoteLeft)
         assert window.overlay.isVisible() and window.overlay.window() is window
         assert app.focusWidget() is window.editor
+        QTest.keyClick(window.editor, Qt.Key.Key_QuoteLeft)
+        assert window.overlay.isVisible() and "`" in window.editor.toPlainText()
         window.editor.setPlainText("schema_version = 1\nanchor = ]\n")
         QTest.keyClick(window.editor, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier)
         wait_for(lambda: not window.busy)
@@ -66,7 +69,18 @@ def test_f12_save_validation_focus_and_reload(tmp_path, monkeypatch):
         QTest.keyClick(window.profile_key, Qt.Key.Key_Plus, Qt.KeyboardModifier.ShiftModifier)
         assert window.profile_key.text() == "+" and not window.busy
         assert window.state.project.anchor == 57
-        QTest.keyClick(window.profile_key, Qt.Key.Key_F12)
+        QTest.keyClick(window.profile_key, Qt.Key.Key_QuoteLeft)
+        assert not window.overlay.isVisible() and window.profile_key.text() == "+`"
+        window.stop_button.setFocus()
+        QTest.keyClick(window.stop_button, Qt.Key.Key_R, Qt.KeyboardModifier.ControlModifier)
+        seed = window.fields["generation.seed"]
+        assert app.focusWidget() is seed
+        QTest.keyClicks(seed, "42")
+        QTest.keyClick(seed, Qt.Key.Key_Return)
+        wait_for(lambda: not window.busy)
+        assert window.state.project.seed == 42 and window.state.running
+        assert "Pending seed 42" in window.seed_status.text()
+        QTest.keyClick(window, Qt.Key.Key_F12)
         window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
         QTest.keyClick(window.editor, Qt.Key.Key_Plus, Qt.KeyboardModifier.ShiftModifier)
         assert window.editor.toPlainText().endswith("+") and not window.busy
