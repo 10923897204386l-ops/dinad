@@ -42,6 +42,9 @@ A dedicated modular abstraction layer discovers capabilities and translates reso
 
 See [M1 contract](m1.md) and [roadmap](roadmap.md).
 
+## Frozen Lua automation boundary (2026-11-12)
+Lua is an optional **virtual controller automation language** planned for M2, not a second musical engine or plugin runtime. Any DINAD controller-mappable parameter may be automated through the same semantic parameter registry, with the same validation, timing and event logging as GUI/keyboard controls. Lua cannot directly access native plugins, synthesis, DSP, routing engines or Python internals. Python retains musical object interpretation, scheduling, module/plugin management and production orchestration; native engines perform real-time DSP. See [Lua controller automation decision](lua-automation-decision.md).
+
 ## Synthesis and production
 Python owns objects, behaviours, rules, orchestration and UI; a native audio engine owns synthesis and DSP. SuperCollider is provisional; Csound is a possible optional specialist backend. Avoid implementing two competing production/mixing stacks.
 - Standard backend adapter: timestamped events, instrument definitions, parameter updates, outputs, latency and render capabilities.
