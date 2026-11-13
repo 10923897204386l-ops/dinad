@@ -39,6 +39,10 @@ FORM_ARPS = (
 )
 
 
+# Fixed estimates based on the native sustained voice envelopes.
+SUSTAINED_RELEASE = {"drone": .3, "pad": .4}
+
+
 class Transport:
     """One looping take. A batch is committed after the output acknowledges it."""
 
@@ -56,6 +60,7 @@ class Transport:
         self.tick = 0
         self.onset = 0.
         self.active: dict[int, float] = {}
+        self.release_tails: list[tuple[float, float]] = []
         self.events: list[Event] = []
         self.actions: list[dict] = []
         self.stop_time = 0.
@@ -77,6 +82,7 @@ class Transport:
         self.tick = 0
         self.onset = 0.
         self.active.clear()
+        self.release_tails.clear()
         self.events.clear()
         self.actions.clear()
         self.initial_project = self.take_project = self.session.project
@@ -93,7 +99,11 @@ class Transport:
             self.events[node - 1002].pitch for node in self.active
             if node not in releasing and self.events[node - 1002].instrument in ("drone", "pad")
         ]
-        sustained.extend(note.pitch for note in notes if note.instrument in ("drone", "pad"))
+        sustained.extend(note.pitch for note in notes if note.instrument in SUSTAINED_RELEASE)
+        if self.session.project.voice_space == 2:
+            sustained.extend(pitch for pitch, end in self.release_tails if self.onset < end)
+            sustained.extend(self.events[node - 1002].pitch for node in releases
+                             if self.events[node - 1002].instrument in SUSTAINED_RELEASE)
         return [note for note in notes if note.instrument != "arp.fast" or
                 all(not math.isclose(abs((note.pitch - pitch + 6) % 12 - 6), 1., abs_tol=1e-8)
                     for pitch in sustained)]
@@ -130,8 +140,13 @@ class Transport:
             except (OSError, RuntimeError) as cleanup:
                 raise RuntimeError(f"{error}. Live cleanup failed: {cleanup}") from error
             raise
+        self.release_tails = [(pitch, end) for pitch, end in self.release_tails if at < end]
         for node in releases:
             del self.active[node]
+            event = self.events[node - 1002]
+            tail = SUSTAINED_RELEASE.get(event.instrument)
+            if tail is not None:
+                self.release_tails.append((event.pitch, at + tail))
         for node, event in starts:
             self.active[node] = event.time + event.duration
             self.events.append(event)
