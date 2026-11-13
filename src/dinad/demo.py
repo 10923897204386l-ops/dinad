@@ -25,8 +25,9 @@ class VariationState:
         return self.random.choice(intervals)
 
 
-def compose(seed: int = 0, anchor: float = 48, tempo: float = 120, *, tension: int = 0) -> tuple[Event, ...]:
-    settings = Project(anchor=anchor, tempo=tempo, seed=seed, tension=tension)
+def compose(seed: int = 0, anchor: float = 48, tempo: float = 120, *, tension: int = 0,
+            motif: int = 0) -> tuple[Event, ...]:
+    settings = Project(anchor=anchor, tempo=tempo, seed=seed, tension=tension, motif=motif)
     anchor, tempo, seed = settings.anchor, settings.tempo, settings.seed
     harmony = MusicalObject(tuple(
         Element(AnchorPitch(interval), start=index * 4, duration=4)
@@ -42,11 +43,17 @@ def compose(seed: int = 0, anchor: float = 48, tempo: float = 120, *, tension: i
         for span in context.spans for interval in chord
     ))
     state = VariationState(seed)
+    fast_intervals = None
+    if settings.motif:
+        phrase = tuple(state.interval(fast_arp) for _ in range(8))
+        fast_intervals = phrase
+        if settings.motif == 2:
+            fast_intervals = phrase * 3 + phrase[::-1]
     arps = []
     # Explicit integer tick indices prevent accumulating clock drift.
     for name, step, intervals in (
         ("arp.slow", 1, slow_arp),
-        ("arp.fast", 0.5, None),
+        ("arp.fast", 0.5, fast_intervals),
     ):
         notes = []
         for tick in range(int(16 / step)):

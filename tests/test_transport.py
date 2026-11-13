@@ -8,7 +8,7 @@ import pytest
 from dinad.config import Profile, Project
 from dinad.demo import compose
 from dinad.recording import decode
-from dinad.transport import Transport
+from dinad.transport import SilentOutput, Transport
 
 
 class Clock:
@@ -269,3 +269,28 @@ def test_tension_changes_shared_pitch_set_deterministically():
         assert {event.pitch - 48 for event in events if event.instrument == "pad" and event.time == 0} == tones
         assert {(event.pitch - 48) % 12 for event in events
                 if event.instrument.startswith("arp.") and event.time < 2} <= tones
+
+
+@pytest.mark.parametrize("mode", [1, 2])
+def test_fast_arp_reuses_motif_across_harmony(mode):
+    from dinad.recording import decode
+
+    def phrases(events):
+        roots = (48, 53, 57, 55)
+        return [tuple(e.pitch - root - 12 for e in events
+                      if e.instrument == "arp.fast" and 2 * bar <= e.time < 2 * (bar + 1))
+                for bar, root in enumerate(roots)]
+
+    project = Project(seed=42, motif=mode, tension=2)
+    transport = Transport(project, Profile(), SilentOutput(), lambda: 100.)
+    transport.start()
+    while transport.tick < 32:
+        transport.advance()
+    transport.clock = lambda: transport.origin + 8.
+    transport.stop()
+    pattern = phrases(decode(transport.recording()))
+    assert pattern == phrases(compose(seed=42, tension=2, motif=mode))
+    assert len(pattern[0]) == 8
+    assert pattern[0] == pattern[1] == pattern[2]
+    assert pattern[3] == (pattern[0] if mode == 1 else pattern[0][::-1])
+    assert set(pattern[0]) <= {0, 4, 6, 10, 12}
