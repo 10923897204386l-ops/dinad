@@ -77,9 +77,13 @@ class SuperColliderLive:
             script = work / "defs.scd"
             assets = _assets()
             if self.audible_drone:
-                assets = assets.replace("SinOsc.ar(freq) * amp * env) ! 2",
-                                        "Mix(SinOsc.ar(freq * [1, 2, 4]) * [0.55, 0.9, 0.7]) * amp * env) ! 2",
-                                        1)
+                assets = assets.replace(
+                    "Env.asr(0.02, 1, 0.3)", "Env.asr(0.12, 1, 0.3)", 1
+                ).replace(
+                    "SinOsc.ar(freq) * amp * env) ! 2",
+                    "Mix(SinOsc.ar(freq * [1, 2, 4]) * [0.55, 0.9, 0.7]) * amp * env) ! 2",
+                    1,
+                ).replace("Env.asr(0.02, 1, 0.4)", "Env.asr(0.10, 1, 0.4)", 1)
             script.write_text(f"({assets}.do {{ |def| def.writeDefFile({_sc_string(directory)}) }}; 0.exit;)\n")
             log = work / "compile.log"
             try:
