@@ -29,6 +29,7 @@ class Parameter:
 
 PARAMETERS = MappingProxyType({
     "composition.anchor": Parameter("anchor", "Anchor", "semitones (C4=60)", 0, 127),
+    "composition.tension": Parameter("tension", "Tension", "level", 0, 2, integer=True),
     "transport.tempo_bpm": Parameter("tempo", "Tempo", "BPM", 1, 1000),
     "generation.seed": Parameter("seed", "Seed", "integer", 0, 2**63 - 1, integer=True),
 })
@@ -40,6 +41,7 @@ class Project:
     tempo: float = 120
     seed: int = 0
     evolve: bool = False
+    tension: int = 0
 
     def __post_init__(self) -> None:
         if type(self.evolve) is not bool:
@@ -116,18 +118,14 @@ def load_project(path: Path) -> Project:
     document = _read(path, {"composition", "transport", "generation"})
     values = {}
     try:
-        for section, identifier in (
-            ("composition", "composition.anchor"),
-            ("transport", "transport.tempo_bpm"),
-            ("generation", "generation.seed"),
-        ):
-            field = identifier.split(".")[1]
-            allowed = {field, "evolve"} if section == "generation" else {field}
-            table = _table(document.get(section, {}), allowed, section)
-            if section == "generation" and "evolve" in table:
-                values["evolve"] = table["evolve"]
-            if field in table:
-                values[PARAMETERS[identifier].attribute] = table[field]
+        for section in ("composition", "transport", "generation"):
+            fields = {identifier.split(".")[1]: parameter.attribute
+                      for identifier, parameter in PARAMETERS.items()
+                      if identifier.startswith(section + ".")}
+            if section == "generation":
+                fields["evolve"] = "evolve"
+            table = _table(document.get(section, {}), set(fields), section)
+            values.update({fields[field]: value for field, value in table.items()})
         return Project(**values)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{path}: {exc}") from exc
