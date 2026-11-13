@@ -52,13 +52,15 @@ class SuperColliderLive:
     lead = .05
 
     def __init__(self, *, port: int, settings: Settings = Settings(),
-                 sclang: str = "sclang", library: Path | None = None) -> None:
+                 sclang: str = "sclang", library: Path | None = None,
+                 layered_voicing: bool = False) -> None:
         if not 1 <= port <= 65535:
             raise ValueError("TCP port must be between 1 and 65535")
         self.port = port
         self.settings = settings
         self.sclang = sclang
         self.library = library
+        self.layered_voicing = layered_voicing
         self._connection: socket.socket | None = None
         self._definitions: tuple[bytes, ...] = ()
         self._serial = 0
@@ -155,7 +157,13 @@ class SuperColliderLive:
         if time.monotonic() - deadline > .25:
             raise RuntimeError("live transport missed its scheduling deadline")
         commands = [("/n_set", node, "gate", 0) for node in releases]
-        commands.extend(voice_arguments(event, self.settings, node) for node, event in starts)
+        for node, event in starts:
+            voice = voice_arguments(event, self.settings, node)
+            if self.layered_voicing and event.instrument == "drone":
+                voice += ("attack", .12, "fundamental", .55, "octave", .9, "twoOctaves", .7)
+            elif self.layered_voicing and event.instrument == "pad":
+                voice += ("attack", .10)
+            commands.append(voice)
         self._exchange(commands, deadline + self._wall_offset)
 
     def close(self, active) -> None:
