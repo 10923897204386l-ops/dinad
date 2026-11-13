@@ -5,7 +5,7 @@ Planning document; dates and milestone scopes are provisional. Completion is def
 ## M0 — Feasibility foundation (integrated)
 Object model; deterministic scheduler/mock history; TOML projects and semantic controls; SuperCollider rendering/live submission; Fedora diagnostics and local listening; subsequent timed-control work where documented. See [M0 brief](m0.md) and M0 implementation notes. Open limitations and local validation evidence remain authoritative in their respective reports.
 
-## M1 — Modular, playable instrument (in progress)
+## M1 — Modular, playable instrument (complete)
 M1.1–M1.5 are integrated, including the DINAD Qt panel, its configuration editor and the headless MDA ePiano. The owner passed the M1.5 sound and control check. The [M1.6 playable instrument demonstration](m1-6.md) is implemented and passed the Fedora owner listening check. See the [M1 plan](m1.md).
 
 ## M2 — Musical intelligence and composition

@@ -1,11 +1,12 @@
 // Pure native synthesis. Python supplies frequency, onset and gate release.
 [
-    SynthDef(\dinad_drone, { |out=16, freq=110, amp=0.035, gate=1|
-        var env = EnvGen.kr(Env.asr(0.02, 1, 0.3), gate, doneAction: 2);
-        Out.ar(out, (SinOsc.ar(freq) * amp * env) ! 2);
+    SynthDef(\dinad_drone, { |out=16, freq=110, amp=0.035, gate=1, attack=0.02, fundamental=1, octave=0, twoOctaves=0|
+        var env = EnvGen.kr(Env.asr(attack, 1, 0.3), gate, doneAction: 2);
+        var sig = Mix(SinOsc.ar(freq * [1, 2, 4]) * [fundamental, octave, twoOctaves]);
+        Out.ar(out, (sig * amp * env) ! 2);
     }),
-    SynthDef(\dinad_pad, { |out=16, freq=220, amp=0.025, gate=1|
-        var env = EnvGen.kr(Env.asr(0.02, 1, 0.4), gate, doneAction: 2);
+    SynthDef(\dinad_pad, { |out=16, freq=220, amp=0.025, gate=1, attack=0.02|
+        var env = EnvGen.kr(Env.asr(attack, 1, 0.4), gate, doneAction: 2);
         var sig = LPF.ar(VarSaw.ar(freq * [0.998, 1.002], 0, 0.4), 1800);
         Out.ar(out, sig * amp * env);
     }),

@@ -103,7 +103,7 @@ def live_transport(project: Project, profile: Profile, *, backend: str | None,
             raise ValueError("layered playback requires ePiano and --exclusive-server")
         live_output = LayeredOutput(output, SuperColliderLive(
             port=port, settings=Settings(sample_rate=output.rate), sclang=sclang,
-            library=library, audible_drone=True))
+            library=library, layered_voicing=True))
     transport = Transport(project, profile, live_output, time.monotonic, lead=live_output.lead)
     if isinstance(output, EPianoLive):
         transport.output_metadata = output.metadata
