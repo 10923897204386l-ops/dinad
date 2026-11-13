@@ -12,6 +12,7 @@ M1.1–M1.5 are integrated, including the DINAD Qt panel, its configuration edit
 First increment: [shared harmonic tension](m2-1.md). The owner passed the Fedora listening check.
 Second increment: [seeded arpeggio motifs](m2-2.md). The owner passed the Fedora listening check.
 Third increment: [evolving live form](m2-3.md). The owner passed the Fedora listening check.
+Fourth increment: [voice-aware arpeggio spacing](m2-4.md). Fedora listening is pending.
 Introduce optional **Lua virtual-controller automation** through DINAD's existing semantic parameter registry (not Lua synthesis, plugins or musical-object interpretation), with restricted runtime, deterministic scheduled control events and explicit manual/automation precedence. See [frozen Lua boundary](lua-automation-decision.md). Develop shared harmonic field and adjustable consonance/tension, voice and effect-tail awareness, multiscale generative behaviours, richer transformations, evolving forms, rule triggers, improvisation capture, reproducible event histories and usable composition editing. Verify musical quality through listening rather than relying only on unit tests.
 
 ## M3 — Fixed performance interface

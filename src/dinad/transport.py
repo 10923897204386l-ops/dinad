@@ -87,6 +87,17 @@ class Transport:
     def deadline(self) -> float:
         return self.origin + min(self.onset, min(self.active.values(), default=math.inf))
 
+    def _space_fast_arp(self, notes: list[Event], releases: tuple[int, ...]) -> list[Event]:
+        releasing = set(releases)
+        sustained = [
+            self.events[node - 1002].pitch for node in self.active
+            if node not in releasing and self.events[node - 1002].instrument in ("drone", "pad")
+        ]
+        sustained.extend(note.pitch for note in notes if note.instrument in ("drone", "pad"))
+        return [note for note in notes if note.instrument != "arp.fast" or
+                all(not math.isclose(abs((note.pitch - pitch + 6) % 12 - 6), 1., abs_tol=1e-8)
+                    for pitch in sustained)]
+
     def advance(self) -> None:
         if not self.running:
             raise ValueError("transport is stopped")
@@ -106,6 +117,8 @@ class Transport:
             notes = [replace(note, time=at, duration=note.duration * seconds_per_beat)
                      for note in self.pattern
                      if note.time == beat and (note.instrument in ("drone", "pad") or note.instrument in arps)]
+            if self.session.project.voice_space:
+                notes = self._space_fast_arp(notes, releases)
             starts = tuple(enumerate(notes, 1002 + len(self.events)))
         try:
             if at == self.onset and self.before_onset is not None:
