@@ -7,6 +7,7 @@ import pytest
 
 from dinad.config import Profile, Project
 from dinad.demo import compose
+from dinad.events import Event
 from dinad.recording import decode
 from dinad.transport import SilentOutput, Transport
 
@@ -322,3 +323,17 @@ def test_turning_form_off_brings_arps_back_at_next_unscheduled_onset():
     transport.advance()
     assert [event.instrument for event in transport.events if event.time == .25] == ["arp.fast"]
     assert transport.actions[-1]["effective_seconds"] == .25
+
+
+def test_voice_spacing_uses_sounding_and_starting_sustained_notes():
+    transport = Transport(Project(), Profile(), SilentOutput(), lambda: 100.)
+    drone = Event("drone", 36, 0, 1)
+    pad = Event("pad", 52, .5, 1)
+    transport.events.append(drone)
+    transport.active[1002] = 1.
+    clashes_with_drone = Event("arp.fast", 61, .5, .2)
+    clashes_with_pad = Event("arp.fast", 65, .5, .2)
+    slow = Event("arp.slow", 65, .5, .4)
+    notes = [pad, clashes_with_drone, clashes_with_pad, slow]
+    assert transport._space_fast_arp(notes, ()) == [pad, slow]
+    assert transport._space_fast_arp(notes, (1002,)) == [pad, clashes_with_drone, slow]
