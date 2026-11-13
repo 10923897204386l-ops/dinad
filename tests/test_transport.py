@@ -337,3 +337,23 @@ def test_voice_spacing_uses_sounding_and_starting_sustained_notes():
     notes = [pad, clashes_with_drone, clashes_with_pad, slow]
     assert transport._space_fast_arp(notes, ()) == [pad, slow]
     assert transport._space_fast_arp(notes, (1002,)) == [pad, clashes_with_drone, slow]
+
+
+def test_voice_spacing_includes_releasing_voices_only_in_tail_mode():
+    transport = Transport(Project(voice_space=2), Profile(), SilentOutput(), lambda: 100.)
+    transport.events.append(Event("pad", 60, 0., 1.))
+    transport.active[1002] = 1.
+    arp = Event("arp.fast", 73, 1., .2)
+    transport.onset = 1.
+    assert transport._space_fast_arp([arp], (1002,)) == []
+    transport.active.clear()
+    transport.release_tails.append((60, 1.4))
+    transport.onset = 1.25
+    assert transport._space_fast_arp([arp], ()) == []
+    transport.control("set composition.voice_space 1")
+    assert transport._space_fast_arp([arp], ()) == [arp]
+    transport.control("set composition.voice_space 2")
+    transport.onset = 1.4
+    assert transport._space_fast_arp([arp], ()) == [arp]
+    transport.start()
+    assert transport.release_tails == []

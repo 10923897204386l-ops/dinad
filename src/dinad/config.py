@@ -29,7 +29,7 @@ class Parameter:
 
 PARAMETERS = MappingProxyType({
     "composition.anchor": Parameter("anchor", "Anchor", "semitones (C4=60)", 0, 127),
-    "composition.voice_space": Parameter("voice_space", "Voice spacing (0 off, 1 on)", "mode", 0, 1, integer=True),
+    "composition.voice_space": Parameter("voice_space", "Voice spacing (0 off, 1 gates, 2 tails)", "mode", 0, 2, integer=True),
     "composition.tension": Parameter("tension", "Tension", "level", 0, 2, integer=True),
     "transport.tempo_bpm": Parameter("tempo", "Tempo", "BPM", 1, 1000),
     "generation.form": Parameter("form", "Form (0 full, 1 evolving)", "mode", 0, 1, integer=True),
