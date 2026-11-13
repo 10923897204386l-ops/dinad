@@ -30,6 +30,15 @@ class SilentOutput:
     def close(self, active): pass
 
 
+# Each entry adds parts to the drone and pad for one 16-beat cycle.
+FORM_ARPS = (
+    frozenset(),
+    frozenset({"arp.slow"}),
+    frozenset({"arp.slow", "arp.fast"}),
+    frozenset({"arp.fast"}),
+)
+
+
 class Transport:
     """One looping take. A batch is committed after the output acknowledges it."""
 
@@ -93,8 +102,10 @@ class Transport:
             if self.session.project.evolve and self.tick and self.tick % 32 == 0:
                 self.pattern = self._pattern(self.session.project, self.tick)
             beat = (self.tick % 32) / 2
+            arps = FORM_ARPS[(self.tick // 32) % len(FORM_ARPS)] if self.session.project.form else FORM_ARPS[2]
             notes = [replace(note, time=at, duration=note.duration * seconds_per_beat)
-                     for note in self.pattern if note.time == beat]
+                     for note in self.pattern
+                     if note.time == beat and (note.instrument in ("drone", "pad") or note.instrument in arps)]
             starts = tuple(enumerate(notes, 1002 + len(self.events)))
         try:
             if at == self.onset and self.before_onset is not None:
