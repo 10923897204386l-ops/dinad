@@ -224,3 +224,31 @@ def test_capture_retains_valid_controls_after_a_rejected_command(tmp_path):
 def test_nontext_control_is_rejected_without_reading_stdin():
     with pytest.raises(ValueError, match="text"):
         Performance(Project()).execute(None, 0)
+
+
+def test_beat_controller_follows_tempo_and_orders_equal_beats(tmp_path):
+    from dinad.config import Project
+    from dinad.performance import load_performance
+
+    path = tmp_path / "controller.toml"
+    path.write_text("""schema_version = 1
+[[controller]]
+beat = 4
+parameter = "transport.tempo_bpm"
+value = 60
+[[controller]]
+beat = 8
+parameter = "composition.tension"
+value = 1
+[[controller]]
+beat = 8
+parameter = "composition.tension"
+value = 2
+""")
+    performance = load_performance(path, Project())
+    assert [(a["beat"], a["seconds"]) for a in performance.actions] == [(4, 2), (8, 6), (8, 6)]
+    assert [e.pitch for e in performance.events() if e.instrument == "pad" and e.time == 6] == [57, 61, 63, 67]
+    assert performance.recording() == load_performance(path, Project()).recording()
+    path.write_text(path.read_text().replace("beat = 8", "beat = 3", 1))
+    with pytest.raises(ValueError, match="ordered"):
+        load_performance(path, Project())
