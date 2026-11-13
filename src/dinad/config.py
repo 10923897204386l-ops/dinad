@@ -31,6 +31,7 @@ PARAMETERS = MappingProxyType({
     "composition.anchor": Parameter("anchor", "Anchor", "semitones (C4=60)", 0, 127),
     "composition.tension": Parameter("tension", "Tension", "level", 0, 2, integer=True),
     "transport.tempo_bpm": Parameter("tempo", "Tempo", "BPM", 1, 1000),
+    "generation.form": Parameter("form", "Form (0 full, 1 evolving)", "mode", 0, 1, integer=True),
     "generation.motif": Parameter("motif", "Arp motif", "mode", 0, 2, integer=True),
     "generation.seed": Parameter("seed", "Seed", "integer", 0, 2**63 - 1, integer=True),
 })
@@ -44,6 +45,7 @@ class Project:
     evolve: bool = False
     tension: int = 0
     motif: int = 0
+    form: int = 0
 
     def __post_init__(self) -> None:
         if type(self.evolve) is not bool:

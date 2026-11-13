@@ -294,3 +294,31 @@ def test_fast_arp_reuses_motif_across_harmony(mode):
     assert pattern[0] == pattern[1] == pattern[2]
     assert pattern[3] == (pattern[0] if mode == 1 else pattern[0][::-1])
     assert set(pattern[0]) <= {0, 4, 6, 10, 12}
+
+
+def test_evolving_form_layers_and_capture():
+    from dinad.recording import decode
+
+    transport = Transport(Project(seed=42, form=1), Profile(), SilentOutput(), lambda: 100.)
+    transport.start()
+    while transport.tick < 160:
+        transport.advance()
+    transport.clock = lambda: transport.origin + 40.
+    transport.stop()
+
+    events = decode(transport.recording())
+    sustained = {"drone", "pad"}
+    expected = [sustained, sustained | {"arp.slow"}, sustained | {"arp.slow", "arp.fast"},
+                sustained | {"arp.fast"}, sustained]
+    assert [{event.instrument for event in events if cycle * 8 <= event.time < (cycle + 1) * 8}
+            for cycle in range(5)] == expected
+
+
+def test_turning_form_off_brings_arps_back_at_next_unscheduled_onset():
+    transport = Transport(Project(form=1), Profile(), SilentOutput(), lambda: 100.)
+    transport.start()
+    transport.advance()
+    transport.control("set generation.form 0")
+    transport.advance()
+    assert [event.instrument for event in transport.events if event.time == .25] == ["arp.fast"]
+    assert transport.actions[-1]["effective_seconds"] == .25
