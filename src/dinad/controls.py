@@ -112,7 +112,7 @@ class Session:
     def recording(self) -> str:
         project = self.project
         backend = MockBackend()
-        replay(compose(project.seed, project.anchor, project.tempo, tension=project.tension), backend)
+        replay(compose(project.seed, project.anchor, project.tempo, tension=project.tension, motif=project.motif), backend)
         return encode(backend.events, {
             "generator": "m0-demo-v1",
             "project_schema_version": 1,

@@ -55,7 +55,7 @@ class Transport:
 
     def _pattern(self, project: Project, tick: int = 0) -> tuple[Event, ...]:
         seed = (project.seed + tick // 32) % 2**63 if project.evolve else project.seed
-        pattern = compose(seed, project.anchor, 60, tension=project.tension)
+        pattern = compose(seed, project.anchor, 60, tension=project.tension, motif=project.motif)
         self.output.validate(pattern)
         return pattern
 
