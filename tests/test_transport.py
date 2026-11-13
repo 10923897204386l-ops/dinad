@@ -243,3 +243,29 @@ def test_evolving_demo_varies_fast_arp_by_cycle():
                      for start in (0, 8)]
     assert first != second
     assert second == tuple(event.pitch for event in compose(seed=43) if event.instrument == "arp.fast")
+
+
+def test_tension_changes_next_pad_and_arp_without_releasing_drone():
+    from dinad.transport import SilentOutput
+
+    transport = Transport(Project(seed=42), Profile(), SilentOutput(), lambda: 0.)
+    transport.start()
+    transport.advance()
+    drone_end = transport.active[1002]
+    transport.control("set composition.tension 2")
+    while transport.tick <= 8:
+        transport.advance()
+    assert transport.active[1002] == drone_end
+    pad = [event for event in transport.events if event.instrument == "pad" and event.time == 2.]
+    assert [event.pitch for event in pad] == [53, 57, 59, 63]
+    assert transport.actions[-1]["parameter"] == "composition.tension"
+    assert transport.actions[-1]["effective_seconds"] == .25
+
+
+def test_tension_changes_shared_pitch_set_deterministically():
+    for level, tones in ((0, {0, 4, 7}), (1, {0, 4, 7, 10}), (2, {0, 4, 6, 10})):
+        events = compose(seed=42, tension=level)
+        assert events == compose(seed=42, tension=level)
+        assert {event.pitch - 48 for event in events if event.instrument == "pad" and event.time == 0} == tones
+        assert {(event.pitch - 48) % 12 for event in events
+                if event.instrument.startswith("arp.") and event.time < 2} <= tones

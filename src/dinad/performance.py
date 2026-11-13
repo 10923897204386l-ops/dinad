@@ -90,7 +90,8 @@ class Performance:
             end = min(stop, self._segments[index + 1].seconds if index + 1 < len(self._segments) else stop)
             end_beat = segment.beat + (end - segment.seconds) * segment.project.tempo / 60
             # At 60 BPM this existing composition's timestamps are beat values.
-            for event in compose(segment.project.seed, segment.project.anchor, 60):
+            for event in compose(segment.project.seed, segment.project.anchor, 60,
+                                 tension=segment.project.tension):
                 if segment.beat <= event.time < end_beat:
                     time = segment.seconds + (event.time - segment.beat) * (60 / segment.project.tempo)
                     duration = event.duration * (60 / segment.project.tempo)

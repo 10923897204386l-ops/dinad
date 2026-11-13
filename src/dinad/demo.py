@@ -21,12 +21,12 @@ class VariationState:
             raise ValueError("seed must be an integer")
         self.random = Random(self.seed)
 
-    def interval(self) -> int:
-        return self.random.choice((0, 4, 7, 12))
+    def interval(self, intervals: tuple[int, ...] = (0, 4, 7, 12)) -> int:
+        return self.random.choice(intervals)
 
 
-def compose(seed: int = 0, anchor: float = 48, tempo: float = 120) -> tuple[Event, ...]:
-    settings = Project(anchor=anchor, tempo=tempo, seed=seed)
+def compose(seed: int = 0, anchor: float = 48, tempo: float = 120, *, tension: int = 0) -> tuple[Event, ...]:
+    settings = Project(anchor=anchor, tempo=tempo, seed=seed, tension=tension)
     anchor, tempo, seed = settings.anchor, settings.tempo, settings.seed
     harmony = MusicalObject(tuple(
         Element(AnchorPitch(interval), start=index * 4, duration=4)
@@ -34,21 +34,24 @@ def compose(seed: int = 0, anchor: float = 48, tempo: float = 120) -> tuple[Even
     ))
     context = HarmonicContext.from_instance(ObjectInstance(harmony, anchor=anchor))
     drone = Part("drone", (Note(anchor - 12, 0, 16),))
+    chord = ((0, 4, 7), (0, 4, 7, 10), (0, 4, 6, 10))[settings.tension]
+    slow_arp = (0, chord[2], 12, chord[-1])
+    fast_arp = (*chord, 12)
     pad = Part("pad", tuple(
         Note(span.pitch + interval, span.start, span.duration)
-        for span in context.spans for interval in (0, 4, 7)
+        for span in context.spans for interval in chord
     ))
     state = VariationState(seed)
     arps = []
     # Explicit integer tick indices prevent accumulating clock drift.
     for name, step, intervals in (
-        ("arp.slow", 1, (0, 7, 12, 7)),
+        ("arp.slow", 1, slow_arp),
         ("arp.fast", 0.5, None),
     ):
         notes = []
         for tick in range(int(16 / step)):
             beat = tick * step
-            interval = intervals[tick % len(intervals)] if intervals else state.interval()
+            interval = intervals[tick % len(intervals)] if intervals else state.interval(fast_arp)
             notes.append(Note(context.pitch_at(beat) + interval + 12, beat, step * 0.8))
         arps.append(Part(name, tuple(notes)))
     return schedule((drone, pad, *arps), tempo)
