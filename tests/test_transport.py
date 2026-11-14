@@ -370,3 +370,19 @@ def test_live_controller_quantizes_to_next_onset_and_records_source():
     assert transport.actions[-1]["beat"] == .5
     assert transport.onset == .75
     assert transport.session.project.tempo == 60
+
+
+def test_controller_backend_error_prevents_opening_output():
+    class IntegerPitchOutput(SilentOutput):
+        def validate(self, events):
+            if any(not event.pitch.is_integer() for event in events):
+                raise ValueError("integer MIDI pitch required")
+
+        def open(self):
+            pytest.fail("invalid controller must fail before opening audio")
+
+    transport = Transport(Project(), Profile(), IntegerPitchOutput(), lambda: 100.)
+    transport.controller = ((4., "composition.anchor", 48.5),)
+    with pytest.raises(ValueError, match="integer MIDI"):
+        transport.start()
+    assert not transport.running

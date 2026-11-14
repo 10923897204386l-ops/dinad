@@ -103,8 +103,11 @@ class Performance:
         for index, segment in enumerate(self._segments):
             if segment.seconds >= stop:
                 break
-            end = min(stop, self._segments[index + 1].seconds if index + 1 < len(self._segments) else stop)
-            end_beat = segment.beat + (end - segment.seconds) * segment.project.tempo / 60
+            next_segment = self._segments[index + 1] if index + 1 < len(self._segments) else None
+            if next_segment is not None and next_segment.seconds <= stop:
+                end_beat = next_segment.beat
+            else:
+                end_beat = segment.beat + (stop - segment.seconds) * segment.project.tempo / 60
             # At 60 BPM this existing composition's timestamps are beat values.
             for event in compose(segment.project.seed, segment.project.anchor, 60,
                                  tension=segment.project.tension, motif=segment.project.motif):

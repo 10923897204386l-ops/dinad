@@ -8,7 +8,7 @@ Object model; deterministic scheduler/mock history; TOML projects and semantic c
 ## M1 — Modular, playable instrument (complete)
 M1.1–M1.5 are integrated, including the DINAD Qt panel, its configuration editor and the headless MDA ePiano. The owner passed the M1.5 sound and control check. The [M1.6 playable instrument demonstration](m1-6.md) is implemented and passed the Fedora owner listening check. See the [M1 plan](m1.md).
 
-## M2 — Musical intelligence and composition
+## M2 — Musical intelligence and composition (complete)
 First increment: [shared harmonic tension](m2-1.md). The owner passed the Fedora listening check.
 Second increment: [seeded arpeggio motifs](m2-2.md). The owner passed the Fedora listening check.
 Third increment: [evolving live form](m2-3.md). The owner passed the Fedora listening check.
@@ -18,7 +18,7 @@ Sixth increment: [beat-based controller schedule](m2-6.md). The owner passed the
 Seventh increment: [beat-based controller ramps](m2-7.md). The owner passed the listening check.
 Eighth increment: [live controller schedules](m2-8.md). The owner passed the listening check.
 Ninth increment: [controller schedule editor](m2-9.md). The owner passed the hands-on check.
-Introduce optional **Lua virtual-controller automation** through DINAD's existing semantic parameter registry (not Lua synthesis, plugins or musical-object interpretation), with restricted runtime, deterministic scheduled control events and explicit manual/automation precedence. See [frozen Lua boundary](lua-automation-decision.md). Develop shared harmonic field and adjustable consonance/tension, voice and effect-tail awareness, multiscale generative behaviours, richer transformations, evolving forms, rule triggers, improvisation capture, reproducible event histories and usable composition editing. Verify musical quality through listening rather than relying only on unit tests.
+M2 closes with the nine increments above. Remaining composition backlog includes optional [restricted Lua controller automation](lua-automation-decision.md), rule triggers, and deeper analysis of sounding voices and effect tails.
 
 ## M3 — Fixed performance interface
 Polish the PySide6/Qt Widgets implementation into the predominantly static virtual hardware panel: knobs, pads, displays, modal colour, contextual banks, keyboard-first navigation, command bar and **polished** drop-down project editor (functional F12 editor introduced in M1.4). The front end remains exclusively DINAD; never embed or launch plugin-specific editors. Improve accessibility, control feedback, undo and transactional configuration.
