@@ -278,3 +278,16 @@ value = 2
     path.write_text(path.read_text().replace("steps = 2", "steps = 257"))
     with pytest.raises(ValueError, match="256 steps"):
         load_performance(path, Project())
+
+
+def test_controller_segment_boundary_does_not_duplicate_note_onset():
+    from dinad.config import Project
+    from dinad.performance import Performance
+
+    performance = Performance(Project(tempo=113))
+    performance.set_at_beat(2.5, "transport.tempo_bpm", 93)
+    performance.set_at_beat(4, "composition.tension", 2)
+    boundary = performance.actions[-1]["seconds"]
+    pad = [e.pitch for e in performance.events() if e.instrument == "pad"
+           and abs(e.time - boundary) < 1e-9]
+    assert pad == [53, 57, 59, 63]

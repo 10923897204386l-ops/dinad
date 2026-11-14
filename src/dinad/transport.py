@@ -79,6 +79,14 @@ class Transport:
         if self.running:
             raise ValueError("transport is already running")
         self.pattern = self._pattern(self.session.project)
+        # Backend constraints can be narrower than the semantic parameter registry.
+        # Check the entire schedule before starting the audio output.
+        if self.controller:
+            validation = Session(self.session.project, self.session.profile)
+            for beat, parameter, value in self.controller:
+                tick = math.ceil(beat * 2)
+                validation.execute(f"set {parameter} {value}",
+                                   validate=lambda candidate: self._pattern(candidate, tick))
         self.output.open()
         self.origin = self.clock() + self.lead
         self.tick = 0
