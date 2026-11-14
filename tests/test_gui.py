@@ -132,21 +132,24 @@ def test_performance_panel_saves_take_and_reports_incompatible_replay(tmp_path):
 
 
 def test_text_scale_applies_to_panel_and_editor_and_persists(tmp_path):
-    from PySide6.QtCore import QSettings
+    from dinad.editor import Document, EditorSession, stage_edit
 
     app = QApplication.instance() or QApplication([])
-    settings = QSettings(str(tmp_path / "ui.ini"), QSettings.Format.IniFormat)
-    window = Window(PanelWorker(model(tmp_path)), settings)
+    original = model(tmp_path)
+    path = tmp_path / "settings.toml"
+    source = "schema_version = 1\n[ui]\ntext_scale = 1.0\n"
+    path.write_text(source)
+    document = Document.read("settings", path)
+    session = EditorSession({**original.documents, "settings": document}, original.factory)
+    window = Window(PanelWorker(session))
     window.show()
     try:
-        initial = [widget.font().pointSizeF() for widget in (window.start_button, window.editor)]
-        window.text_scale.setCurrentText("125%")
-        assert [widget.font().pointSizeF() for widget in (window.start_button, window.editor)] == [
-            size * 1.25 for size in initial]
-        settings.sync()
-        assert QSettings(settings.fileName(), QSettings.Format.IniFormat).value("text_scale") == "125%"
-        window.text_scale.setCurrentText("100%")
-        assert [widget.font().pointSizeF() for widget in (window.start_button, window.editor)] == initial
+        widgets = (window.start_button, window.editor)
+        initial = [widget.font().pointSizeF() for widget in widgets]
+        window._submit("save", lambda model: model.apply(stage_edit(document, source.replace("1.0", "1.25"))))
+        wait_for(lambda: not window.busy)
+        assert [widget.font().pointSizeF() for widget in widgets] == [size * 1.25 for size in initial]
+        assert "text_scale = 1.25" in path.read_text()
     finally:
         window.close()
         wait_for(lambda: not window.isVisible())

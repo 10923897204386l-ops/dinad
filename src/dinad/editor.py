@@ -8,14 +8,23 @@ from tempfile import NamedTemporaryFile
 import tomllib
 from typing import Callable
 
-from dinad.config import Profile, Project, load_profile, load_project
+from dinad.config import Profile, Project, _read, _table, load_profile, load_project
 from dinad.performance import load_controller
 from dinad.registry import ModuleConfig, load_module_config
 from dinad.transport import Transport
 
 
+def load_settings(path: Path) -> float:
+    document = _read(path, {"ui"})
+    ui = _table(document.get("ui", {}), {"text_scale"}, "ui")
+    scale = ui.get("text_scale", 1.0)
+    if type(scale) not in (int, float) or scale not in (1.0, 1.25):
+        raise ValueError("ui.text_scale must be 1.0 or 1.25")
+    return float(scale)
+
+
 LOADERS = {"project": load_project, "profile": load_profile, "modules": load_module_config,
-           "controller": load_controller}
+           "controller": load_controller, "settings": load_settings}
 
 
 @dataclass(frozen=True)
@@ -72,7 +81,7 @@ class StagedEdit:
     original: Document
     replacement: Document
     temporary: Path
-    candidate: Project | Profile | ModuleConfig | tuple[tuple[float, str, float], ...]
+    candidate: Project | Profile | ModuleConfig | float | tuple[tuple[float, str, float], ...]
 
     def commit(self) -> None:
         path = self.original.path
