@@ -252,3 +252,29 @@ value = 2
     path.write_text(path.read_text().replace("beat = 8", "beat = 3", 1))
     with pytest.raises(ValueError, match="ordered"):
         load_performance(path, Project())
+
+
+def test_controller_ramp_merges_with_sets_in_beat_order(tmp_path):
+    from dinad.config import Project
+    from dinad.performance import load_performance
+
+    path = tmp_path / "ramp.toml"
+    path.write_text("""schema_version = 1
+[[controller]]
+beat = 0
+parameter = "transport.tempo_bpm"
+value = 120
+end_beat = 8
+end_value = 60
+steps = 2
+[[controller]]
+beat = 4
+parameter = "composition.tension"
+value = 2
+""")
+    actions = load_performance(path, Project()).actions
+    assert [(a["beat"], a["new"]) for a in actions] == [(0, 120), (4, 90), (4, 2), (8, 60)]
+    assert actions[-1]["seconds"] == pytest.approx(2 + 4 * 60 / 90)
+    path.write_text(path.read_text().replace("steps = 2", "steps = 257"))
+    with pytest.raises(ValueError, match="256 steps"):
+        load_performance(path, Project())
