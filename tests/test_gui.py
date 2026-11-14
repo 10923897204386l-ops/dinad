@@ -129,3 +129,24 @@ def test_performance_panel_saves_take_and_reports_incompatible_replay(tmp_path):
     finally:
         window.close()
         wait_for(lambda: not window.isVisible())
+
+
+def test_text_scale_applies_to_panel_and_editor_and_persists(tmp_path):
+    from PySide6.QtCore import QSettings
+
+    app = QApplication.instance() or QApplication([])
+    settings = QSettings(str(tmp_path / "ui.ini"), QSettings.Format.IniFormat)
+    window = Window(PanelWorker(model(tmp_path)), settings)
+    window.show()
+    try:
+        initial = [widget.font().pointSizeF() for widget in (window.start_button, window.editor)]
+        window.text_scale.setCurrentText("125%")
+        assert [widget.font().pointSizeF() for widget in (window.start_button, window.editor)] == [
+            size * 1.25 for size in initial]
+        settings.sync()
+        assert QSettings(settings.fileName(), QSettings.Format.IniFormat).value("text_scale") == "125%"
+        window.text_scale.setCurrentText("100%")
+        assert [widget.font().pointSizeF() for widget in (window.start_button, window.editor)] == initial
+    finally:
+        window.close()
+        wait_for(lambda: not window.isVisible())

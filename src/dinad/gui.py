@@ -6,10 +6,10 @@ from queue import Empty
 import re
 import shlex
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QFontDatabase, QKeySequence, QShortcut, QSyntaxHighlighter, QTextCharFormat
+from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QKeySequence, QShortcut, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QComboBox, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
@@ -39,9 +39,12 @@ class TomlHighlight(QSyntaxHighlighter):
 
 
 class Window(QMainWindow):
-    def __init__(self, worker: PanelWorker):
+    def __init__(self, worker: PanelWorker, settings: QSettings | None = None):
         super().__init__()
         self.worker = worker
+        self.settings = settings
+        self.base_font = self.font()
+        self.editor_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         self.state = worker.initial
         self.file_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dinad-file")
         self.future = None
@@ -57,16 +60,20 @@ class Window(QMainWindow):
         layout = QVBoxLayout(self.panel)
         self.project_name = QLabel()
         self.transport_status = QLabel()
-        layout.addWidget(self.project_name)
-        layout.addWidget(self.transport_status)
+        transport = QGroupBox("Transport")
+        transport_layout = QVBoxLayout(transport)
+        transport_layout.addWidget(self.project_name)
+        transport_layout.addWidget(self.transport_status)
         buttons = QHBoxLayout()
         self.start_button = QPushButton("Start")
         self.stop_button = QPushButton("Stop")
         self.editor_button = QPushButton("Configuration  ` / F12")
         for button in (self.start_button, self.stop_button, self.editor_button):
             buttons.addWidget(button)
-        layout.addLayout(buttons)
-        fields = QFormLayout()
+        transport_layout.addLayout(buttons)
+        layout.addWidget(transport)
+        performance = QGroupBox("Performance")
+        fields = QFormLayout(performance)
         self.fields = {}
         for identifier, descriptor in PARAMETERS.items():
             field = QLineEdit()
@@ -80,8 +87,9 @@ class Window(QMainWindow):
         self.profile_key.setPlaceholderText("Enter a key from the loaded profile")
         self.profile_key.returnPressed.connect(self._profile_control)
         fields.addRow("Profile key", self.profile_key)
-        layout.addLayout(fields)
-        take = QHBoxLayout()
+        layout.addWidget(performance)
+        takes = QGroupBox("Takes")
+        take = QHBoxLayout(takes)
         self.take_path = QLineEdit()
         self.take_path.setPlaceholderText("Path to take.json")
         self.take_path.setAccessibleName("Take path")
@@ -90,7 +98,16 @@ class Window(QMainWindow):
         take.addWidget(self.take_path)
         take.addWidget(self.capture_button)
         take.addWidget(self.replay_button)
-        layout.addLayout(take)
+        layout.addWidget(takes)
+        preference = QHBoxLayout()
+        scale_label = QLabel("Text size")
+        self.text_scale = QComboBox()
+        self.text_scale.addItems(("100%", "125%"))
+        scale_label.setBuddy(self.text_scale)
+        preference.addWidget(scale_label)
+        preference.addWidget(self.text_scale)
+        preference.addStretch()
+        layout.addLayout(preference)
         self.audio_diagnostics = QLabel()
         self.audio_diagnostics.setTextFormat(Qt.TextFormat.PlainText)
         self.audio_diagnostics.setWordWrap(True)
@@ -119,7 +136,10 @@ class Window(QMainWindow):
         self.path.setWordWrap(True)
         editing.addWidget(self.path)
         self.editor = QPlainTextEdit()
-        self.editor.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        if settings is not None and settings.value("text_scale") == "125%":
+            self.text_scale.setCurrentIndex(1)
+        self._apply_text_scale(self.text_scale.currentText())
+        self.text_scale.currentTextChanged.connect(self._apply_text_scale)
         self.highlighter = TomlHighlight(self.editor.document())
         editing.addWidget(self.editor)
         self.diagnostic = QLabel()
@@ -161,6 +181,18 @@ class Window(QMainWindow):
         self.timer.start(20)
         self._update_panel()
         worker.thread.start()
+
+    def _apply_text_scale(self, choice: str):
+        factor = 1.25 if choice == "125%" else 1.
+        for widget, base in ((self, self.base_font), (self.editor, self.editor_font)):
+            font = QFont(base)
+            if font.pointSizeF() > 0:
+                font.setPointSizeF(font.pointSizeF() * factor)
+            else:
+                font.setPixelSize(round(font.pixelSize() * factor))
+            widget.setFont(font)
+        if self.settings is not None:
+            self.settings.setValue("text_scale", choice)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -466,6 +498,6 @@ def launch(args) -> int:
 
     worker = PanelWorker(EditorSession(documents, factory))
     app = QApplication.instance() or QApplication(["DINAD"])
-    window = Window(worker)
+    window = Window(worker, QSettings("DINAD", "DINAD"))
     window.show()
     return app.exec()
