@@ -3,6 +3,7 @@
 **Status: accepted and frozen for M1.4 and subsequent front-end work.** This is a technology/architecture decision, not a claim that a GUI is already implemented.
 
 ## Decision
+- Set parameters in the DINAD text editor or map them to the fixed, parameter-agnostic GUI controls. Store global preferences in global DINAD TOML.
 - **Python PySide6 bindings to Qt 6, using Qt Widgets** are DINAD's sole desktop GUI toolkit.
 - Build a **single DINAD application window**, resizable and optionally full-screen. Use custom-painted Qt Widgets for the eventual static hardware-style instrument panel; use Qt's native text editing primitives (QPlainTextEdit, QSyntaxHighlighter or equivalent Qt Widgets facilities) for the configuration editor.
 - The final instrument layout remains largely static, with contextual mode-dependent labels, displays, knobs and pads. Mouse optional; keyboard-first navigation and controls remain mandatory.

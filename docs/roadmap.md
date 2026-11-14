@@ -21,6 +21,7 @@ Ninth increment: [controller schedule editor](m2-9.md). The owner passed the han
 Introduce optional **Lua virtual-controller automation** through DINAD's existing semantic parameter registry (not Lua synthesis, plugins or musical-object interpretation), with restricted runtime, deterministic scheduled control events and explicit manual/automation precedence. See [frozen Lua boundary](lua-automation-decision.md). Develop shared harmonic field and adjustable consonance/tension, voice and effect-tail awareness, multiscale generative behaviours, richer transformations, evolving forms, rule triggers, improvisation capture, reproducible event histories and usable composition editing. Verify musical quality through listening rather than relying only on unit tests.
 
 ## M3 — Fixed performance interface
+First increment: [panel layout and readability](m3-1.md). Fedora usability check pending.
 Polish the PySide6/Qt Widgets implementation into the predominantly static virtual hardware panel: knobs, pads, displays, modal colour, contextual banks, keyboard-first navigation, command bar and **polished** drop-down project editor (functional F12 editor introduced in M1.4). The front end remains exclusively DINAD; never embed or launch plugin-specific editors. Improve accessibility, control feedback, undo and transactional configuration.
 
 ## M4 — Instruments and sound palette

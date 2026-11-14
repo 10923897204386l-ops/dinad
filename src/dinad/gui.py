@@ -5,11 +5,12 @@ from pathlib import Path
 from queue import Empty
 import re
 import shlex
+import tomllib
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QFontDatabase, QKeySequence, QShortcut, QSyntaxHighlighter, QTextCharFormat
+from PySide6.QtCore import QStandardPaths, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QKeySequence, QShortcut, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QComboBox, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
@@ -42,6 +43,9 @@ class Window(QMainWindow):
     def __init__(self, worker: PanelWorker):
         super().__init__()
         self.worker = worker
+        self.text_scale = object()
+        self.base_font = self.font()
+        self.editor_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         self.state = worker.initial
         self.file_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dinad-file")
         self.future = None
@@ -57,16 +61,20 @@ class Window(QMainWindow):
         layout = QVBoxLayout(self.panel)
         self.project_name = QLabel()
         self.transport_status = QLabel()
-        layout.addWidget(self.project_name)
-        layout.addWidget(self.transport_status)
+        transport = QGroupBox("Transport")
+        transport_layout = QVBoxLayout(transport)
+        transport_layout.addWidget(self.project_name)
+        transport_layout.addWidget(self.transport_status)
         buttons = QHBoxLayout()
         self.start_button = QPushButton("Start")
         self.stop_button = QPushButton("Stop")
         self.editor_button = QPushButton("Configuration  ` / F12")
         for button in (self.start_button, self.stop_button, self.editor_button):
             buttons.addWidget(button)
-        layout.addLayout(buttons)
-        fields = QFormLayout()
+        transport_layout.addLayout(buttons)
+        layout.addWidget(transport)
+        performance = QGroupBox("Performance")
+        fields = QFormLayout(performance)
         self.fields = {}
         for identifier, descriptor in PARAMETERS.items():
             field = QLineEdit()
@@ -80,8 +88,9 @@ class Window(QMainWindow):
         self.profile_key.setPlaceholderText("Enter a key from the loaded profile")
         self.profile_key.returnPressed.connect(self._profile_control)
         fields.addRow("Profile key", self.profile_key)
-        layout.addLayout(fields)
-        take = QHBoxLayout()
+        layout.addWidget(performance)
+        takes = QGroupBox("Takes")
+        take = QHBoxLayout(takes)
         self.take_path = QLineEdit()
         self.take_path.setPlaceholderText("Path to take.json")
         self.take_path.setAccessibleName("Take path")
@@ -90,7 +99,7 @@ class Window(QMainWindow):
         take.addWidget(self.take_path)
         take.addWidget(self.capture_button)
         take.addWidget(self.replay_button)
-        layout.addLayout(take)
+        layout.addWidget(takes)
         self.audio_diagnostics = QLabel()
         self.audio_diagnostics.setTextFormat(Qt.TextFormat.PlainText)
         self.audio_diagnostics.setWordWrap(True)
@@ -119,7 +128,7 @@ class Window(QMainWindow):
         self.path.setWordWrap(True)
         editing.addWidget(self.path)
         self.editor = QPlainTextEdit()
-        self.editor.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self._apply_text_scale()
         self.highlighter = TomlHighlight(self.editor.document())
         editing.addWidget(self.editor)
         self.diagnostic = QLabel()
@@ -161,6 +170,20 @@ class Window(QMainWindow):
         self.timer.start(20)
         self._update_panel()
         worker.thread.start()
+
+    def _apply_text_scale(self):
+        document = self.state.documents.get("settings")
+        if document == self.text_scale:
+            return
+        self.text_scale = document
+        factor = tomllib.loads(document.text).get("ui", {}).get("text_scale", 1.0) if document else 1.0
+        for widget, base in ((self, self.base_font), (self.editor, self.editor_font)):
+            font = QFont(base)
+            if font.pointSizeF() > 0:
+                font.setPointSizeF(font.pointSizeF() * factor)
+            else:
+                font.setPixelSize(round(font.pixelSize() * factor))
+            widget.setFont(font)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -421,6 +444,7 @@ class Window(QMainWindow):
             except Empty:
                 break
             self.state = result
+            self._apply_text_scale()
             self.status.setText(result.message if len(result.message) <= 500 else result.message[:497] + "…")
             if result.response:
                 operation, self.pending = self.pending, None
@@ -464,8 +488,17 @@ def launch(args) -> int:
                               port=args.port, sample_rate=args.sample_rate, sclang=args.sclang,
                               library=args.library, module_config=module_config, layered=getattr(args, "layered", False))
 
-    worker = PanelWorker(EditorSession(documents, factory))
     app = QApplication.instance() or QApplication(["DINAD"])
+    config = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericConfigLocation))
+    settings = config / "dinad" / "settings.toml"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with settings.open("x", encoding="utf-8") as stream:
+            stream.write("schema_version = 1\n\n[ui]\ntext_scale = 1.0\n")
+    except FileExistsError:
+        pass
+    documents["settings"] = Document.read("settings", settings)
+    worker = PanelWorker(EditorSession(documents, factory))
     window = Window(worker)
     window.show()
     return app.exec()
