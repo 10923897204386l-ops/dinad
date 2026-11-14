@@ -5,7 +5,7 @@ import shlex
 from pathlib import Path
 import tomllib
 
-from dinad.config import Profile, Project, _read, _table
+from dinad.config import PARAMETERS, Profile, Project, _read, _table
 from dinad.controls import Session, parse_action
 from dinad.demo import compose
 from dinad.engine import Event
@@ -75,6 +75,22 @@ class Performance:
         self._last_time = float(seconds)
         return result
 
+    def set_at_beat(self, beat: float, parameter: str, value: float) -> str:
+        """Schedule a semantic set against musical time and the current tempo."""
+        _finite(beat, "controller beat")
+        if not isinstance(parameter, str) or parameter not in PARAMETERS:
+            raise ValueError(f"unknown semantic parameter {parameter!r}")
+        PARAMETERS[parameter].validate(value, parameter)
+        segment = self._segments[-1]
+        if not segment.beat <= beat < 16:
+            raise ValueError("controller beats must be ordered and in the 16-beat performance")
+        seconds = segment.seconds + (beat - segment.beat) * (60 / segment.project.tempo)
+        result = self.execute(f"set {parameter} {value}", seconds)
+        # Keep the requested beat exact when converting back from seconds.
+        self._segments[-1] = Segment(seconds, float(beat), self.session.project)
+        self._actions[-1]["beat"] = float(beat)
+        return result
+
     def events(self, stop: float | None = None) -> tuple[Event, ...]:
         if stop is None:
             stop = self._stopped if self._stopped is not None else self.end_time
@@ -122,8 +138,21 @@ class Performance:
 def load_performance(path: Path, project: Project, profile: Profile | None = None) -> Performance:
     """Validate a complete TOML control timeline before producing any output."""
     path = Path(path)
-    document = _read(path, {"actions"})
+    document = _read(path, {"actions", "controller"})
     try:
+        if "controller" in document:
+            if "actions" in document:
+                raise ValueError("choose either actions or controller")
+            entries = document["controller"]
+            if not isinstance(entries, list) or len(entries) > 4096:
+                raise ValueError("controller must be an array of at most 4096 tables")
+            performance = Performance(project, profile)
+            for index, raw in enumerate(entries):
+                item = _table(raw, {"beat", "parameter", "value"}, f"controller[{index}]")
+                if set(item) != {"beat", "parameter", "value"}:
+                    raise ValueError(f"controller[{index}] requires beat, parameter and value")
+                performance.set_at_beat(item["beat"], item["parameter"], item["value"])
+            return performance
         actions = document.get("actions", [])
         if not isinstance(actions, list):
             raise ValueError("actions must be an array of tables")
