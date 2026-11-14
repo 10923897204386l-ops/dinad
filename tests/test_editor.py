@@ -122,3 +122,32 @@ version = "mock-v1"
     assert "rebuilt" in session.apply(stage_edit(document, source))
     assert session.transport is not original and not session.transport.running
     assert document.path.read_text() == source
+
+
+def test_controller_edit_validates_and_applies_only_when_stopped(tmp_path):
+    original = model(tmp_path)
+    path = tmp_path / "controller.toml"
+    path.write_text("schema_version = 1\ncontroller = []\n")
+    documents = {**original.documents, "controller": Document.read("controller", path)}
+    session = EditorSession(documents, original.factory)
+    source = """schema_version = 1
+[[controller]]
+beat = 0
+parameter = "transport.tempo_bpm"
+value = 90
+"""
+    document = documents["controller"]
+    with pytest.raises(EditError, match="must be between"):
+        stage_edit(document, source.replace("90", "0"))
+    session.transport.start()
+    with pytest.raises(EditError, match="Stop playback"):
+        session.apply(stage_edit(document, source))
+    assert path.read_bytes() == document.content
+    assert session.transport.controller == ()
+    session.transport.stop()
+    session.apply(stage_edit(document, source))
+    assert path.read_text() == source
+    session.transport.start()
+    session.transport.advance()
+    assert session.transport.session.project.tempo == 90
+    session.transport.stop()

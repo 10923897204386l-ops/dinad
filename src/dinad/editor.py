@@ -9,11 +9,13 @@ import tomllib
 from typing import Callable
 
 from dinad.config import Profile, Project, load_profile, load_project
+from dinad.performance import load_controller
 from dinad.registry import ModuleConfig, load_module_config
 from dinad.transport import Transport
 
 
-LOADERS = {"project": load_project, "profile": load_profile, "modules": load_module_config}
+LOADERS = {"project": load_project, "profile": load_profile, "modules": load_module_config,
+           "controller": load_controller}
 
 
 @dataclass(frozen=True)
@@ -70,7 +72,7 @@ class StagedEdit:
     original: Document
     replacement: Document
     temporary: Path
-    candidate: Project | Profile | ModuleConfig
+    candidate: Project | Profile | ModuleConfig | tuple[tuple[float, str, float], ...]
 
     def commit(self) -> None:
         path = self.original.path
@@ -121,6 +123,7 @@ class EditorSession:
         self.playback = None
         self.modules = loaded.get("modules")
         self.transport = factory(loaded["project"], loaded.get("profile", Profile()), self.modules)
+        self.transport.controller = loaded.get("controller", ())
 
     @property
     def live_config(self) -> tuple:
@@ -134,11 +137,15 @@ class EditorSession:
         try:
             if self.documents.get(edit.original.kind) != edit.original:
                 raise EditError("Editor snapshot is stale. Reload before saving.")
-            if isinstance(candidate, ModuleConfig):
+            if edit.original.kind == "controller":
+                if transport.running or (self.playback is not None and self.playback.running):
+                    raise EditError("Stop playback before applying a controller schedule.")
+            elif isinstance(candidate, ModuleConfig):
                 if (candidate.operations.get("live"), candidate.bindings) != self.live_config:
                     if transport.running:
                         raise EditError("Live provider, settings or bindings changed. Stop playback, then save again to rebuild.")
                     replacement = self.factory(transport.session.project, transport.session.profile, candidate)
+                    replacement.controller = transport.controller
             else:
                 project = candidate if isinstance(candidate, Project) else transport.session.project
                 profile = candidate if isinstance(candidate, Profile) else transport.session.profile
@@ -149,6 +156,10 @@ class EditorSession:
                         error = EditError(f"composition.anchor: {exc}")
                         raise EditError(str(error), _location(error, edit.replacement.text)) from exc
             edit.commit()
+            if edit.original.kind == "controller":
+                transport.controller = candidate
+                self.documents["controller"] = edit.replacement
+                return "Saved. The controller schedule will run on the next Start."
             if publish is not None:
                 publish()
             if replacement is not None:

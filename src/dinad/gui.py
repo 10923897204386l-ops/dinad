@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
 
 from dinad.config import PARAMETERS
 from dinad.editor import Document, EditorSession, stage_edit
-from dinad.performance import load_controller
 from dinad.execution import live_transport, load_take, play_take
 from dinad.panel_worker import PanelWorker
 from dinad.recording import save_take
@@ -455,20 +454,15 @@ class Window(QMainWindow):
 
 def launch(args) -> int:
     documents = {"project": Document.read("project", args.project)}
-    for kind in ("profile", "modules"):
-        path = getattr(args, kind)
+    for kind in ("profile", "modules", "controller"):
+        path = getattr(args, kind, None)
         if path is not None:
             documents[kind] = Document.read(kind, path)
 
-    schedule = load_controller(args.controller) if getattr(args, "controller", None) else ()
-
     def factory(project, profile, module_config):
-        transport = live_transport(project, profile, backend=args.backend, exclusive=args.exclusive_server,
+        return live_transport(project, profile, backend=args.backend, exclusive=args.exclusive_server,
                               port=args.port, sample_rate=args.sample_rate, sclang=args.sclang,
                               library=args.library, module_config=module_config, layered=getattr(args, "layered", False))
-
-        transport.controller = schedule
-        return transport
 
     worker = PanelWorker(EditorSession(documents, factory))
     app = QApplication.instance() or QApplication(["DINAD"])
