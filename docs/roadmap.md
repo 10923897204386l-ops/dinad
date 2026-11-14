@@ -17,7 +17,7 @@ Fifth increment: [release-aware spacing](m2-5.md). The owner passed the Fedora l
 Sixth increment: [beat-based controller schedule](m2-6.md). The owner passed the listening check.
 Seventh increment: [beat-based controller ramps](m2-7.md). The owner passed the listening check.
 Eighth increment: [live controller schedules](m2-8.md). The owner passed the listening check.
-Ninth increment: [controller schedule editor](m2-9.md). Hands-on verification is pending.
+Ninth increment: [controller schedule editor](m2-9.md). The owner passed the hands-on check.
 Introduce optional **Lua virtual-controller automation** through DINAD's existing semantic parameter registry (not Lua synthesis, plugins or musical-object interpretation), with restricted runtime, deterministic scheduled control events and explicit manual/automation precedence. See [frozen Lua boundary](lua-automation-decision.md). Develop shared harmonic field and adjustable consonance/tension, voice and effect-tail awareness, multiscale generative behaviours, richer transformations, evolving forms, rule triggers, improvisation capture, reproducible event histories and usable composition editing. Verify musical quality through listening rather than relying only on unit tests.
 
 ## M3 — Fixed performance interface
