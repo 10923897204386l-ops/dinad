@@ -143,43 +143,8 @@ def load_performance(path: Path, project: Project, profile: Profile | None = Non
         if "controller" in document:
             if "actions" in document:
                 raise ValueError("choose either actions or controller")
-            entries = document["controller"]
-            if not isinstance(entries, list) or len(entries) > 4096:
-                raise ValueError("controller must be an array of at most 4096 tables")
             performance = Performance(project, profile)
-            schedule = []
-            for index, raw in enumerate(entries):
-                item = _table(raw, {"beat", "parameter", "value", "end_beat", "end_value", "steps"},
-                              f"controller[{index}]")
-                if not {"beat", "parameter", "value"} <= item.keys():
-                    raise ValueError(f"controller[{index}] requires beat, parameter and value")
-                beat, parameter, value = item["beat"], item["parameter"], item["value"]
-                _finite(beat, "controller beat")
-                if not 0 <= beat < 16 or (index and beat < previous_beat):
-                    raise ValueError("controller beats must be ordered and in the 16-beat performance")
-                previous_beat = beat
-                ramp_fields = item.keys() & {"end_beat", "end_value", "steps"}
-                if not ramp_fields:
-                    schedule.append((beat, parameter, value))
-                else:
-                    if ramp_fields != {"end_beat", "end_value", "steps"}:
-                        raise ValueError("ramp requires end_beat, end_value and steps")
-                    end, target, steps = item["end_beat"], item["end_value"], item["steps"]
-                    _finite(end, "ramp end beat")
-                    if not beat < end < 16 or type(steps) is not int or not 1 <= steps <= 256:
-                        raise ValueError("ramp needs a later beat before 16 and 1 to 256 steps")
-                    descriptor = PARAMETERS.get(parameter) if isinstance(parameter, str) else None
-                    if descriptor is None or descriptor.integer:
-                        raise ValueError("ramp requires a continuous semantic parameter")
-                    descriptor.validate(value, parameter)
-                    descriptor.validate(target, parameter)
-                    schedule.extend((beat + (end - beat) * (step / steps), parameter,
-                                     value + (target - value) * (step / steps))
-                                    for step in range(steps))
-                    schedule.append((end, parameter, target))
-                if len(schedule) > 4096:
-                    raise ValueError("controller schedule exceeds 4096 resolved operations")
-            for beat, parameter, value in sorted(schedule, key=lambda action: action[0]):
+            for beat, parameter, value in expand_controller(document["controller"]):
                 performance.set_at_beat(beat, parameter, value)
             return performance
         actions = document.get("actions", [])
@@ -195,4 +160,54 @@ def load_performance(path: Path, project: Project, profile: Profile | None = Non
             performance.execute(item["command"], item["seconds"])
         return performance
     except (TypeError, ValueError) as exc:
+        raise ValueError(f"{path}: {exc}") from exc
+
+
+def expand_controller(entries: object) -> tuple[tuple[float, str, float], ...]:
+    if not isinstance(entries, list) or len(entries) > 4096:
+        raise ValueError("controller must be an array of at most 4096 tables")
+    schedule = []
+    for index, raw in enumerate(entries):
+        item = _table(raw, {"beat", "parameter", "value", "end_beat", "end_value", "steps"},
+                      f"controller[{index}]")
+        if not {"beat", "parameter", "value"} <= item.keys():
+            raise ValueError(f"controller[{index}] requires beat, parameter and value")
+        beat, parameter, value = item["beat"], item["parameter"], item["value"]
+        _finite(beat, "controller beat")
+        if not 0 <= beat < 16 or (index and beat < previous_beat):
+            raise ValueError("controller beats must be ordered and in the 16-beat performance")
+        previous_beat = beat
+        ramp_fields = item.keys() & {"end_beat", "end_value", "steps"}
+        if not ramp_fields:
+            schedule.append((beat, parameter, value))
+        else:
+            if ramp_fields != {"end_beat", "end_value", "steps"}:
+                raise ValueError("ramp requires end_beat, end_value and steps")
+            end, target, steps = item["end_beat"], item["end_value"], item["steps"]
+            _finite(end, "ramp end beat")
+            if not beat < end < 16 or type(steps) is not int or not 1 <= steps <= 256:
+                raise ValueError("ramp needs a later beat before 16 and 1 to 256 steps")
+            descriptor = PARAMETERS.get(parameter) if isinstance(parameter, str) else None
+            if descriptor is None or descriptor.integer:
+                raise ValueError("ramp requires a continuous semantic parameter")
+            descriptor.validate(value, parameter)
+            descriptor.validate(target, parameter)
+            schedule.extend((beat + (end - beat) * (step / steps), parameter,
+                             value + (target - value) * (step / steps))
+                            for step in range(steps))
+            schedule.append((end, parameter, target))
+        if len(schedule) > 4096:
+            raise ValueError("controller schedule exceeds 4096 resolved operations")
+    for _, parameter, value in schedule:
+        if not isinstance(parameter, str) or parameter not in PARAMETERS:
+            raise ValueError(f"unknown semantic parameter {parameter!r}")
+        PARAMETERS[parameter].validate(value, parameter)
+    return tuple(sorted(schedule, key=lambda action: action[0]))
+
+
+def load_controller(path: Path) -> tuple[tuple[float, str, float], ...]:
+    document = _read(path, {"controller"})
+    try:
+        return expand_controller(document.get("controller"))
+    except ValueError as exc:
         raise ValueError(f"{path}: {exc}") from exc

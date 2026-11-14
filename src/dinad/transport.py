@@ -54,6 +54,8 @@ class Transport:
         self.lead = lead
         self.before_onset: Callable[[Project], None] | None = None
         self.output_metadata: Callable[[float, float], dict] | None = None
+        self.controller: tuple[tuple[float, str, float], ...] = ()
+        self.controller_index = 0
         self.running = False
         self.active_seed: int | None = None
         self.origin = 0.
@@ -80,6 +82,7 @@ class Transport:
         self.output.open()
         self.origin = self.clock() + self.lead
         self.tick = 0
+        self.controller_index = 0
         self.onset = 0.
         self.active.clear()
         self.release_tails.clear()
@@ -119,6 +122,16 @@ class Transport:
         releases = tuple(node for node, end in self.active.items() if end <= at + 1e-8)
         starts = ()
         if at == self.onset:
+            try:
+                while (self.controller_index < len(self.controller)
+                       and self.controller[self.controller_index][0] <= self.tick / 2):
+                    beat, parameter, value = self.controller[self.controller_index]
+                    self.control(f"set {parameter} {value}")
+                    self.actions[-1].update(source="controller", scheduled_beat=beat)
+                    self.controller_index += 1
+            except (ValueError, OSError, RuntimeError, OverflowError):
+                self.stop()
+                raise
             seconds_per_beat = 60 / self.session.project.tempo
             if self.session.project.evolve and self.tick and self.tick % 32 == 0:
                 self.pattern = self._pattern(self.session.project, self.tick)

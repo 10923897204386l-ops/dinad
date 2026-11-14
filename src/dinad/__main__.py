@@ -15,6 +15,7 @@ import time
 
 from dinad.config import PARAMETERS, Profile, Project, load_profile, load_project
 from dinad.controls import Session
+from dinad.performance import load_controller
 from dinad.execution import live_transport, play_history, render_history, replay_history
 from dinad.recording import decode, save_take
 from dinad.registry import BUILTINS, load_module_config
@@ -227,6 +228,7 @@ def main() -> int:
     live.add_argument("--sample-rate", type=int)
     live.add_argument("--sclang", default="sclang")
     live.add_argument("--library", type=Path)
+    live.add_argument("--controller", type=Path, help="beat-based controller TOML")
     gui = commands.add_parser("gui", help="open the DINAD Qt Widgets performance panel")
     gui.add_argument("--project", type=Path, required=True)
     gui.add_argument("--profile", type=Path)
@@ -238,6 +240,7 @@ def main() -> int:
     gui.add_argument("--sample-rate", type=int)
     gui.add_argument("--sclang", default="sclang")
     gui.add_argument("--library", type=Path)
+    gui.add_argument("--controller", type=Path, help="beat-based controller TOML")
     for name in ("render", "play"):
         audio = commands.add_parser(name, help="SuperCollider offline WAV render" if name == "render"
                                     else "submit to an exclusive running SuperCollider server")
@@ -275,10 +278,13 @@ def main() -> int:
         if args.command == "live":
             project = load_project(args.project) if args.project else Project()
             profile = load_profile(args.profile) if args.profile else Profile()
-            return _live(live_transport(project, profile, backend=args.backend,
+            transport = live_transport(project, profile, backend=args.backend,
                                         exclusive=args.exclusive_server, port=args.port,
                                         sample_rate=args.sample_rate, sclang=args.sclang,
-                                        library=args.library, module_config=module_config))
+                                        library=args.library, module_config=module_config)
+            if args.controller:
+                transport.controller = load_controller(args.controller)
+            return _live(transport)
         elif args.command == "modules":
             print(json.dumps([asdict(item) for item in BUILTINS.descriptors], default=sorted, indent=2))
         elif args.command == "validate-modules":

@@ -357,3 +357,16 @@ def test_voice_spacing_includes_releasing_voices_only_in_tail_mode():
     assert transport._space_fast_arp([arp], ()) == [arp]
     transport.start()
     assert transport.release_tails == []
+
+
+def test_live_controller_quantizes_to_next_onset_and_records_source():
+    transport = Transport(Project(), Profile(), SilentOutput(), lambda: 100.)
+    transport.controller = ((.25, "transport.tempo_bpm", 60),)
+    transport.start()
+    while transport.tick < 2:
+        transport.advance()
+    assert transport.actions[-1]["source"] == "controller"
+    assert transport.actions[-1]["scheduled_beat"] == .25
+    assert transport.actions[-1]["beat"] == .5
+    assert transport.onset == .75
+    assert transport.session.project.tempo == 60
