@@ -7,12 +7,65 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
+  - --filesystem=xdg-run/pipewire-0
+  - --env=LV2_PATH=/app/lib/lv2
 modules:
+  - name: zix
+    buildsystem: meson
+    config-opts: [--libdir=lib]
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/zix-0.6.2.tar.xz
+        sha256: 4bc771abf4fcf399ea969a1da6b375f0117784f8fd0e2db356a859f635f616a7
+  - name: serd
+    buildsystem: meson
+    config-opts: [--libdir=lib]
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/serd-0.32.4.tar.xz
+        sha256: cbefb569e8db686be8c69cb3866a9538c7cb055e8f24217dd6a4471effa7d349
+  - name: sord
+    buildsystem: meson
+    config-opts: [--libdir=lib]
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/sord-0.16.18.tar.xz
+        sha256: 4f398b635894491a4774b1498959805a08e11734c324f13d572dea695b13d3b3
+  - name: lv2
+    buildsystem: meson
+    config-opts: [--libdir=lib]
+    sources:
+      - type: archive
+        url: https://lv2plug.in/spec/lv2-1.18.10.tar.xz
+        sha256: 78c51bcf21b54e58bb6329accbb4dae03b2ed79b520f9a01e734bd9de530953f
+  - name: sratom
+    buildsystem: meson
+    config-opts: [--libdir=lib]
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/sratom-0.6.18.tar.xz
+        sha256: 4c6a6d9e0b4d6c01cc06a8849910feceb92e666cb38779c614dd2404a9931e92
+  - name: lilv
+    buildsystem: meson
+    config-opts: [--libdir=lib]
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/lilv-0.24.26.tar.xz
+        sha256: 22feed30bc0f952384a25c2f6f4b04e6d43836408798ed65a8a934c055d5d8ac
+  - name: mda-lv2
+    buildsystem: meson
+    config-opts: [--libdir=lib]
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/mda-lv2-1.2.10.tar.xz
+        sha256: aeea5986a596dd953e2997421a25e45923928c6286c4c8c36e5ef63ca1c2a75a
   - name: dinad
     buildsystem: simple
     build-commands:
       - python3 -m venv --without-pip --system-site-packages /app/venv
       - python3 -m pip --python /app/venv install --no-index --find-links=wheelhouse 'dinad[gui]'
+      - make -C tools/lv2
+      - install -Dm755 tools/lv2/dinad-epiano /app/bin/dinad-epiano
       - install -Dm755 packaging/dinad-desktop /app/bin/dinad-desktop
       - install -Dm644 packaging/io.github.dinad.Dinad.desktop /app/share/applications/io.github.dinad.Dinad.desktop
       - install -d /app/share/dinad && cp -r examples/first_environment /app/share/dinad

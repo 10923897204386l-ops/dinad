@@ -21,7 +21,7 @@ jobs:
       - name: Build wheels with the target SDK
         run: |
           mkdir -p .flatpak-input/wheelhouse
-          cp -r packaging examples .flatpak-input/
+          cp -r packaging examples tools .flatpak-input/
           flatpak run --user --share=network --filesystem="$PWD" --command=python3 org.freedesktop.Sdk//25.08 -m pip wheel --wheel-dir "$PWD/.flatpak-input/wheelhouse" "$PWD[gui]"
       - name: Build and smoke-test the sandbox
         run: |
@@ -29,6 +29,7 @@ jobs:
           flatpak-builder --user --disable-rofiles-fuse --repo=repo build-flatpak "$manifest"
           flatpak-builder --run --env=QT_QPA_PLATFORM=offscreen build-flatpak "$manifest" /app/venv/bin/python -c 'from PySide6.QtWidgets import QApplication; import dinad.gui; app = QApplication([]); assert app.platformName() == "offscreen"'
           flatpak-builder --run build-flatpak "$manifest" /app/venv/bin/python -m dinad validate --project /app/share/dinad/first_environment/playable.toml --profile /app/share/dinad/first_environment/controls.toml
+          flatpak-builder --run build-flatpak "$manifest" /app/bin/dinad-epiano probe
           flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo dinad.flatpak io.github.dinad.Dinad
           git rev-parse HEAD > revision.txt
       - uses: actions/upload-artifact@v4
