@@ -153,3 +153,36 @@ def test_text_scale_applies_to_panel_and_editor_and_persists(tmp_path):
     finally:
         window.close()
         wait_for(lambda: not window.isVisible())
+
+
+def test_fixed_controls_follow_profile_remap(tmp_path):
+    from dinad.editor import stage_edit
+
+    app = QApplication.instance() or QApplication([])
+    session = model(tmp_path, profile=True)
+    window = Window(PanelWorker(session))
+    window.show()
+    try:
+        original = window.knobs["knob1"]
+        source = session.documents["profile"].text + """
+[knobs]
+knob1 = "composition.tension"
+[pads]
+pad1 = "set composition.tension 2"
+"""
+        edit = stage_edit(session.documents["profile"], source)
+        window._submit("save", lambda model: model.apply(edit))
+        wait_for(lambda: not window.busy)
+        assert window.knobs["knob1"] == original
+        label, dial, field = original
+        assert label.text() == "Tension"
+        assert not window.knobs["knob2"][1].isEnabled()
+        window.pads["pad1"].click()
+        wait_for(lambda: not window.busy)
+        assert dial.value() == 2 and field.text() == "2"
+        dial.setValue(1)
+        wait_for(lambda: not window.busy)
+        assert window.state.project.tension == 1
+    finally:
+        window.close()
+        wait_for(lambda: not window.isVisible())

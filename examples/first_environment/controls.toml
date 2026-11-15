@@ -10,3 +10,9 @@ schema_version = 1
 "i" = "inspect"
 "g" = "generate"
 "q" = "quit"
+
+[pads]
+pad1 = "set composition.tension 0"
+pad2 = "set composition.tension 1"
+pad3 = "set composition.tension 2"
+pad4 = "undo"
