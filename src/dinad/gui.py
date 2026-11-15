@@ -182,7 +182,7 @@ class Window(QMainWindow):
             if font.pointSizeF() > 0:
                 font.setPointSizeF(font.pointSizeF() * factor)
             else:
-                font.setPixelSize(round(font.pixelSize() * factor))
+                font.setPixelSize(max(1, round(font.pixelSize() * factor)))
             widget.setFont(font)
 
     def resizeEvent(self, event):

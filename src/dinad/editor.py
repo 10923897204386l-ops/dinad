@@ -18,8 +18,8 @@ def load_settings(path: Path) -> float:
     document = _read(path, {"ui"})
     ui = _table(document.get("ui", {}), {"text_scale"}, "ui")
     scale = ui.get("text_scale", 1.0)
-    if type(scale) not in (int, float) or scale not in (1.0, 1.25):
-        raise ValueError("ui.text_scale must be 1.0 or 1.25")
+    if type(scale) not in (int, float) or (scale != 1.25 and (not 0.5 <= scale <= 3.0 or round(scale, 1) != scale)):
+        raise ValueError("ui.text_scale must be 0.5 to 3.0 in 0.1 increments (legacy 1.25 is accepted)")
     return float(scale)
 
 
