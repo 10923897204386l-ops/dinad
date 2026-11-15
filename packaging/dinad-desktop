@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+project_dir="${XDG_DATA_HOME:?}/dinad"
+mkdir -p "$project_dir"
+for name in playable controls; do
+    if [ ! -e "$project_dir/$name.toml" ]; then
+        cp -n "/app/share/dinad/first_environment/$name.toml" "$project_dir/$name.toml"
+    fi
+done
+exec /app/venv/bin/python -m dinad gui --project "$project_dir/playable.toml" --profile "$project_dir/controls.toml" "$@"

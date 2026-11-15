@@ -1,0 +1,21 @@
+app-id: io.github.dinad.Dinad
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: dinad-desktop
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+modules:
+  - name: dinad
+    buildsystem: simple
+    build-commands:
+      - python3 -m venv --without-pip --system-site-packages /app/venv
+      - python3 -m pip --python /app/venv install --no-index --find-links=wheelhouse 'dinad[gui]'
+      - install -Dm755 packaging/dinad-desktop /app/bin/dinad-desktop
+      - install -Dm644 packaging/io.github.dinad.Dinad.desktop /app/share/applications/io.github.dinad.Dinad.desktop
+      - install -d /app/share/dinad && cp -r examples/first_environment /app/share/dinad
+    sources:
+      - type: dir
+        path: ../.flatpak-input

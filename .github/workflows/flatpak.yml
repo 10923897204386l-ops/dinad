@@ -1,0 +1,41 @@
+name: Private Flatpak
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ['packaging/**', 'src/**', 'pyproject.toml', '.github/workflows/flatpak.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
+      - run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.freedesktop.Sdk//25.08 org.freedesktop.Platform//25.08
+      - name: Build wheels with the target SDK
+        run: |
+          mkdir -p .flatpak-input/wheelhouse
+          cp -r packaging examples .flatpak-input/
+          flatpak run --user --share=network --filesystem="$PWD" --command=python3 org.freedesktop.Sdk//25.08 -m pip wheel --wheel-dir "$PWD/.flatpak-input/wheelhouse" "$PWD[gui]"
+      - name: Build and smoke-test the sandbox
+        run: |
+          manifest=packaging/io.github.dinad.Dinad.yml
+          flatpak-builder --user --disable-rofiles-fuse --repo=repo build-flatpak "$manifest"
+          flatpak-builder --run --env=QT_QPA_PLATFORM=offscreen build-flatpak "$manifest" /app/venv/bin/python -c 'from PySide6.QtWidgets import QApplication; import dinad.gui; app = QApplication([]); assert app.platformName() == "offscreen"'
+          flatpak-builder --run build-flatpak "$manifest" /app/venv/bin/python -m dinad validate --project /app/share/dinad/first_environment/playable.toml --profile /app/share/dinad/first_environment/controls.toml
+          flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo dinad.flatpak io.github.dinad.Dinad
+          git rev-parse HEAD > revision.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dinad-flatpak
+          path: |
+            dinad.flatpak
+            revision.txt
+          if-no-files-found: error
+          retention-days: 30
