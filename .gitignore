@@ -28,3 +28,6 @@ recordings/
 *.midi
 
 /tools/lv2/dinad-epiano
+
+/.flatpak-input/
+/build-flatpak/

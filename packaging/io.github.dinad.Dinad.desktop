@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=DINAD
+Exec=dinad-desktop
+Terminal=false
+Categories=AudioVideo;Audio;

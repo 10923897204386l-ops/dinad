@@ -21,6 +21,7 @@ Ninth increment: [controller schedule editor](m2-9.md). The owner passed the han
 M2 closes with the nine increments above. Remaining composition backlog includes optional [restricted Lua controller automation](lua-automation-decision.md), rule triggers, and deeper analysis of sounding voices and effect tails.
 
 ## M3 — Fixed performance interface
+First increment: [panel layout and readability](m3-1.md). Fedora usability check pending.
 Polish the PySide6/Qt Widgets implementation into the predominantly static virtual hardware panel: knobs, pads, displays, modal colour, contextual banks, keyboard-first navigation, command bar and **polished** drop-down project editor (functional F12 editor introduced in M1.4). The front end remains exclusively DINAD; never embed or launch plugin-specific editors. Improve accessibility, control feedback, undo and transactional configuration.
 
 ## M4 — Instruments and sound palette

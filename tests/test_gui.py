@@ -129,3 +129,27 @@ def test_performance_panel_saves_take_and_reports_incompatible_replay(tmp_path):
     finally:
         window.close()
         wait_for(lambda: not window.isVisible())
+
+
+def test_text_scale_applies_to_panel_and_editor_and_persists(tmp_path):
+    from dinad.editor import Document, EditorSession, stage_edit
+
+    app = QApplication.instance() or QApplication([])
+    original = model(tmp_path)
+    path = tmp_path / "settings.toml"
+    source = "schema_version = 1\n[ui]\ntext_scale = 1.0\n"
+    path.write_text(source)
+    document = Document.read("settings", path)
+    session = EditorSession({**original.documents, "settings": document}, original.factory)
+    window = Window(PanelWorker(session))
+    window.show()
+    try:
+        widgets = (window.start_button, window.editor)
+        initial = [widget.font().pointSizeF() for widget in widgets]
+        window._submit("save", lambda model: model.apply(stage_edit(document, source.replace("1.0", "1.25"))))
+        wait_for(lambda: not window.busy)
+        assert [widget.font().pointSizeF() for widget in widgets] == [size * 1.25 for size in initial]
+        assert "text_scale = 1.25" in path.read_text()
+    finally:
+        window.close()
+        wait_for(lambda: not window.isVisible())

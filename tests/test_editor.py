@@ -151,3 +151,19 @@ value = 90
     session.transport.advance()
     assert session.transport.session.project.tempo == 90
     session.transport.stop()
+
+
+@pytest.mark.parametrize(("scale", "valid"), [
+    ("0.5", True), ("1.1", True), ("1.25", True), ("3.0", True),
+    ("0.4", False), ("1.15", False), ("3.1", False), ("nan", False), ("true", False),
+])
+def test_global_text_scale_range(tmp_path, scale, valid):
+    from dinad.editor import load_settings
+
+    path = tmp_path / "settings.toml"
+    path.write_text(f"schema_version = 1\n[ui]\ntext_scale = {scale}\n")
+    if valid:
+        assert load_settings(path) == float(scale)
+    else:
+        with pytest.raises(ValueError, match="ui.text_scale"):
+            load_settings(path)
