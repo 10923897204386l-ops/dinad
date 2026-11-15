@@ -1,0 +1,106 @@
+#!/app/venv/bin/python
+"""Start the single DINAD window and supervise its private audio server."""
+
+import json
+import os
+import re
+from pathlib import Path
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import tomllib
+
+RATE = 48000
+CLIENT = "DINAD-Synth"
+
+
+def command_output(*args):
+    return subprocess.check_output(args, text=True, timeout=3)
+
+
+def default_sink():
+    metadata = command_output("pw-metadata", "-n", "default", "0", "default.audio.sink")
+    match = re.search(r"value:'(\{.*\})' type:", metadata)
+    if match:
+        return json.loads(match[1])["name"]
+    raise RuntimeError("PipeWire has no default audio sink")
+
+
+def connect_stereo(client, channels, sink):
+    inputs = set(command_output("pw-link", "-i").splitlines())
+    destinations = [f"{sink}:playback_{side}" for side in ("FL", "FR")]
+    if not all(port in inputs for port in destinations):
+        raise RuntimeError(f"PipeWire sink {sink!r} has no stereo FL/FR inputs")
+    for channel, destination in zip(channels, destinations):
+        result = subprocess.run(["pw-link", f"{client}:{channel}", destination],
+                                capture_output=True, text=True, timeout=3)
+        if result.returncode and "File exists" not in result.stderr:
+            raise RuntimeError(result.stderr.strip() or "PipeWire link failed")
+
+
+def stop_process(process):
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+def main():
+    project = Path(os.environ["XDG_DATA_HOME"]) / "dinad"
+    project.mkdir(parents=True, exist_ok=True)
+    for name in ("playable", "controls", "epiano"):
+        path = project / f"{name}.toml"
+        if not path.exists():
+            shutil.copyfile(Path("/app/share/dinad/first_environment") / path.name, path)
+    modules = project / "epiano.toml"
+    sink = default_sink()
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    server = subprocess.Popen([
+        "/app/bin/scsynth", "-t", str(port), "-B", "127.0.0.1", "-u", "0",
+        "-i", "0", "-o", "2", "-S", str(RATE), "-H", CLIENT,
+        "-U", "/app/lib/SuperCollider/plugins",
+    ])
+    try:
+        deadline = time.monotonic() + 8
+        while f"{CLIENT}:out_2" not in command_output("pw-link", "-o").splitlines():
+            if server.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError("SuperCollider did not open stereo outputs")
+            time.sleep(.1)
+        connect_stereo(CLIENT, ("out_1", "out_2"), sink)
+        gui = subprocess.Popen([
+            sys.executable, "-m", "dinad", "gui", "--project", str(project / "playable.toml"),
+            "--profile", str(project / "controls.toml"), "--modules", str(modules),
+            "--layered", "--exclusive-server", "--port", str(port), *sys.argv[1:],
+        ])
+        try:
+            connected = False
+            while gui.poll() is None:
+                if server.poll() is not None:
+                    raise RuntimeError("The SuperCollider server stopped")
+                ports = command_output("pw-link", "-o").splitlines()
+                active = {"DINAD-EPiano:left", "DINAD-EPiano:right"}.issubset(ports)
+                if active and not connected:
+                    settings = tomllib.loads(modules.read_text()).get("operations", {}).get("live", {}).get("settings", {})
+                    if not settings.get("output_left"):
+                        connect_stereo("DINAD-EPiano", ("left", "right"), sink)
+                connected = active
+                time.sleep(.05)
+            return gui.returncode
+        finally:
+            stop_process(gui)
+    finally:
+        stop_process(server)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+        sys.exit(f"DINAD audio startup failed: {exc}")
