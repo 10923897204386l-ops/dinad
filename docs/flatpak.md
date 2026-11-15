@@ -1,35 +1,20 @@
 # Private DINAD Flatpak
 
-The build follows Net Runner's model. GitHub Actions builds Python
-wheels in the Freedesktop 25.08 SDK, installs those wheels offline
-during the Flatpak build, and uploads a private bundle with its Git
-revision. DINAD retains PySide6 and its in-window TOML editor.
+GitHub Actions builds Python wheels in the Freedesktop 25.08 SDK,
+installs them offline, builds headless SuperCollider and MDA ePiano
+from checksum-pinned sources, and exports a private bundle and revision.
+DINAD keeps its PySide6 panel and in-window TOML editor.
 
-The desktop launcher seeds an editable demo in the app's XDG data
-directory. Global settings are stored in the app's XDG config directory.
-The default launcher uses the mock backend. An audio-capable migration
-requires packaging the native ePiano and SuperCollider components and
-verifying live stereo routing and take replay inside the sandbox.
-Keep using the Fedora development launch for those workflows.
+Install the bundle with `flatpak install --user ./dinad.flatpak`, then
+launch DINAD from the app menu or run `flatpak run io.github.dinad.Dinad`.
+The launcher starts a private loopback SuperCollider server within the
+sandbox. It routes the drone and pad through that server and the arps
+through ePiano, with both stereo outputs connected to the PipeWire
+default sink. Set both ePiano output destinations in the modules TOML
+to override the automatic ePiano route. The default sink needs FL and FR
+inputs and the audio graph must run at 48 kHz.
 
-When the workflow publishes an artifact, extract it and install it with
-`flatpak install --user ./dinad.flatpak`. Launch with
-`flatpak run io.github.dinad.Dinad`.
-
-## ePiano audio preview
-
-The audio build includes the native ePiano helper, the MDA LV2 bundle
-and its discovery libraries. Sources are checksum-pinned and built
-against the Flatpak SDK. The app can access the host PipeWire socket
-for JACK playback. The app launcher defaults to the mock project.
-
-To use ePiano, pass the included module config:
-
-```sh
-flatpak run io.github.dinad.Dinad --modules /app/share/dinad/first_environment/epiano.toml
-```
-
-Connect the two JACK outputs `DINAD-EPiano:left` and
-`DINAD-EPiano:right` to the desired sink using PipeWire, or provide
-left and right destinations in an editable copy of the module TOML.
-Layered audio still requires SuperCollider packaging.
+The app seeds editable copies of the demo project, controls and modules
+in its XDG data directory. Global settings stay in its XDG config
+directory. For CLI use, the packaged interpreter is available through
+`flatpak run --command=/app/venv/bin/python io.github.dinad.Dinad -m dinad`.

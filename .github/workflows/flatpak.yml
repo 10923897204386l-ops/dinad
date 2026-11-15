@@ -30,6 +30,8 @@ jobs:
           flatpak-builder --run --env=QT_QPA_PLATFORM=offscreen build-flatpak "$manifest" /app/venv/bin/python -c 'from PySide6.QtWidgets import QApplication; import dinad.gui; app = QApplication([]); assert app.platformName() == "offscreen"'
           flatpak-builder --run build-flatpak "$manifest" /app/venv/bin/python -m dinad validate --project /app/share/dinad/first_environment/playable.toml --profile /app/share/dinad/first_environment/controls.toml
           flatpak-builder --run build-flatpak "$manifest" /app/bin/dinad-epiano probe
+          flatpak-builder --run build-flatpak "$manifest" /app/bin/scsynth -v
+          flatpak-builder --run build-flatpak "$manifest" /app/bin/sclang -v
           flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo dinad.flatpak io.github.dinad.Dinad
           git rev-parse HEAD > revision.txt
       - uses: actions/upload-artifact@v4
