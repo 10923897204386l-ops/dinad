@@ -21,6 +21,7 @@ Read docs/architecture.md, docs/m1.md and docs/roadmap.md before M1 work; consul
 - Preserve a small dependency footprint. Avoid premature C/Rust rewrites and unnecessary framework infrastructure.
 
 ## Frozen GUI technology
+- Set parameters in DINAD’s in-window text editor or map them to the fixed, parameter-agnostic GUI controls. Do not add dedicated graphical widgets for individual settings. Global preferences belong in global DINAD TOML.
 - **PySide6 / Qt 6 Widgets is the sole DINAD desktop GUI toolkit.** Read docs/gui-decision.md before any GUI work. No QML/Qt Quick, browser/web/Electron, GTK, Dear PyGui or vendor/plugin editor without explicit owner-approved architecture change.
 - The DINAD GUI is one window; a minimal performance panel and an **in-window F12 drop-down** editor are M1.4 deliverables. Use Qt text editing and syntax highlighting. Keep final panel visual polish for M3.
 - The application model and headless CLI/tests must remain usable without Qt or a display. Qt must not perform audio DSP or block scheduling; all controls go through DINAD's semantic model.
