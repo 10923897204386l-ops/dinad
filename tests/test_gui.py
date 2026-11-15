@@ -79,13 +79,12 @@ def test_f12_save_validation_focus_and_reload(tmp_path, monkeypatch):
         assert not window.overlay.isVisible() and window.profile_key.text() == "+`"
         window.stop_button.setFocus()
         QTest.keyClick(window.stop_button, Qt.Key.Key_R, Qt.KeyboardModifier.ControlModifier)
-        seed = window.fields["generation.seed"]
+        seed = window.knobs["knob7"][1]
         assert app.focusWidget() is seed
-        QTest.keyClicks(seed, "42")
-        QTest.keyClick(seed, Qt.Key.Key_Return)
+        QTest.keyClick(seed, Qt.Key.Key_Up, Qt.KeyboardModifier.ShiftModifier)
         wait_for(lambda: not window.busy)
-        assert window.state.project.seed == 42 and window.state.running
-        assert "Pending seed 42" in window.seed_status.text()
+        assert window.state.project.seed == 10 and window.state.running
+        assert "Pending seed 10" in window.seed_status.text()
         QTest.keyClick(window, Qt.Key.Key_F12)
         window.editor.moveCursor(window.editor.textCursor().MoveOperation.End)
         QTest.keyClick(window.editor, Qt.Key.Key_Plus, Qt.KeyboardModifier.ShiftModifier)
@@ -174,13 +173,14 @@ pad1 = "set composition.tension 2"
         window._submit("save", lambda model: model.apply(edit))
         wait_for(lambda: not window.busy)
         assert window.knobs["knob1"] == original
-        label, dial, field = original
+        label, dial, display = original
         assert label.text() == "Tension"
         assert not window.knobs["knob2"][1].isEnabled()
         window.pads["pad1"].click()
         wait_for(lambda: not window.busy)
-        assert dial.value() == 2 and field.text() == "2"
-        dial.setValue(1)
+        assert dial.value() == 2 and display.value() == 2
+        dial.setFocus()
+        QTest.keyClick(dial, Qt.Key.Key_Down)
         wait_for(lambda: not window.busy)
         assert window.state.project.tension == 1
     finally:
