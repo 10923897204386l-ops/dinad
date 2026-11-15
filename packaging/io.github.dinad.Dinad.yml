@@ -94,6 +94,7 @@ modules:
       - install -Dm755 tools/lv2/dinad-epiano /app/bin/dinad-epiano
       - install -Dm755 packaging/dinad-desktop /app/bin/dinad-desktop
       - install -Dm644 packaging/io.github.dinad.Dinad.desktop /app/share/applications/io.github.dinad.Dinad.desktop
+      - install -Dm644 packaging/io.github.dinad.Dinad.png /app/share/icons/hicolor/256x256/apps/io.github.dinad.Dinad.png
       - install -d /app/share/dinad && cp -r examples/first_environment /app/share/dinad
     sources:
       - type: dir
