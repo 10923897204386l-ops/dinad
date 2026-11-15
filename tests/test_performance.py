@@ -284,8 +284,8 @@ def test_controller_segment_boundary_does_not_duplicate_note_onset():
     from dinad.config import Project
     from dinad.performance import Performance
 
-    performance = Performance(Project(tempo=113))
-    performance.set_at_beat(2.5, "transport.tempo_bpm", 93)
+    performance = Performance(Project(tempo=70))
+    performance.set_at_beat(2.5, "transport.tempo_bpm", 113)
     performance.set_at_beat(4, "composition.tension", 2)
     boundary = performance.actions[-1]["seconds"]
     pad = [e.pitch for e in performance.events() if e.instrument == "pad"
