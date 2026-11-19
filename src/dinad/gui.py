@@ -7,14 +7,14 @@ import re
 import shlex
 import tomllib
 
-from PySide6.QtCore import QStandardPaths, Qt, QTimer
+from PySide6.QtCore import QSignalBlocker, QStandardPaths, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QKeySequence, QShortcut, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QComboBox, QDial, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLCDNumber, QLineEdit,
     QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
-from dinad.config import PARAMETERS
+from dinad.config import KNOB_SLOTS, PAD_SLOTS, PARAMETERS
 from dinad.editor import Document, EditorSession, stage_edit
 from dinad.execution import live_transport, load_take, play_take
 from dinad.panel_worker import PanelWorker
@@ -37,6 +37,23 @@ class TomlHighlight(QSyntaxHighlighter):
             start = len(text[:match.start()].encode("utf-16-le")) // 2
             length = len(match[0].encode("utf-16-le")) // 2
             self.setFormat(start, length, style)
+
+
+class PerformanceKnob(QDial):
+    stepped = Signal(int)
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Down, Qt.Key.Key_Right, Qt.Key.Key_Up):
+            modifiers = event.modifiers()
+            multiplier = 100 if modifiers & Qt.KeyboardModifier.AltModifier else (
+                10 if modifiers & Qt.KeyboardModifier.ShiftModifier else (
+                    5 if modifiers & Qt.KeyboardModifier.ControlModifier else 1))
+            direction = -1 if key in (Qt.Key.Key_Left, Qt.Key.Key_Down) else 1
+            self.stepped.emit(direction * multiplier)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class Window(QMainWindow):
@@ -74,20 +91,46 @@ class Window(QMainWindow):
         transport_layout.addLayout(buttons)
         layout.addWidget(transport)
         performance = QGroupBox("Performance")
-        fields = QFormLayout(performance)
-        self.fields = {}
-        for identifier, descriptor in PARAMETERS.items():
-            field = QLineEdit()
-            field.returnPressed.connect(lambda key=identifier: self._control(key))
-            label = "Seed (Ctrl+R)" if identifier == "generation.seed" else descriptor.label
-            fields.addRow(label, field)
-            self.fields[identifier] = field
+        surface = QVBoxLayout(performance)
+        grid = QGridLayout()
+        self.knobs = {}
+
+        for index, slot in enumerate(KNOB_SLOTS):
+            cell = QVBoxLayout()
+            label = QLabel()
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            dial = PerformanceKnob()
+            dial.setFixedSize(60, 60)
+            dial.setTracking(False)
+            dial.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            dial.valueChanged.connect(lambda value, key=slot: self._turn_knob(key, value))
+            dial.stepped.connect(lambda step, key=slot: self._step_knob(key, step))
+            display = QLCDNumber()
+            display.setFrameShape(QFrame.Shape.StyledPanel)
+            display.setSegmentStyle(QLCDNumber.SegmentStyle.Flat)
+            display.setStyleSheet("QLCDNumber { color: #a6e3c2; background: #073642; border-radius: 4px; }")
+            display.setFixedSize(120, 28)
+            cell.addWidget(label)
+            cell.addWidget(dial, alignment=Qt.AlignmentFlag.AlignCenter)
+            cell.addWidget(display, alignment=Qt.AlignmentFlag.AlignCenter)
+            grid.addLayout(cell, index // 4, index % 4)
+            self.knobs[slot] = (label, dial, display)
+        surface.addLayout(grid)
+        surface.addWidget(QLabel("↑ → increase · ↓ ← decrease · Ctrl ×5 · Shift ×10 · Alt ×100"))
+        pad_row = QHBoxLayout()
+        self.pads = {}
+        for slot in PAD_SLOTS:
+            pad = QPushButton()
+            pad.clicked.connect(lambda checked=False, key=slot: self._press_pad(key))
+            self.pads[slot] = pad
+            pad_row.addWidget(pad)
+        surface.addLayout(pad_row)
         self.seed_status = QLabel()
-        fields.addRow(self.seed_status)
+        surface.addWidget(self.seed_status)
         self.profile_key = QLineEdit()
         self.profile_key.setPlaceholderText("Enter a key from the loaded profile")
         self.profile_key.returnPressed.connect(self._profile_control)
-        fields.addRow("Profile key", self.profile_key)
+        surface.addWidget(self.profile_key)
         layout.addWidget(performance)
         takes = QGroupBox("Takes")
         take = QHBoxLayout(takes)
@@ -274,10 +317,41 @@ class Window(QMainWindow):
         else:
             status = f"Seed {seed} for next start"
         self.seed_status.setText(status)
-        for identifier, field in self.fields.items():
-            field.setEnabled(panel_enabled and not self.state.replaying)
-            if not (field.hasFocus() and field.isModified()):
-                field.setText(str(values[identifier]))
+        assignments = dict(self.state.profile.knobs)
+        for slot, (label, dial, display) in self.knobs.items():
+            identifier = assignments.get(slot)
+            descriptor = PARAMETERS.get(identifier)
+            name = descriptor.label if descriptor else slot.title()
+            short_name = name.split(" (", 1)[0]
+            if len(short_name) > 12:
+                short_name = short_name[:11] + "…"
+            label.setText(short_name)
+            label.setToolTip(name)
+            dial.setAccessibleName(name)
+            dial.setProperty("parameter", identifier)
+            dial.setEnabled(bool(descriptor) and not self.closing and
+                            not self.overlay.isVisible() and not self.state.replaying)
+            if descriptor:
+                span = descriptor.maximum - descriptor.minimum
+                steps = min(int(span), 1000)
+                with QSignalBlocker(dial):
+                    dial.setRange(0, steps)
+                    dial.setValue(round((values[identifier] - descriptor.minimum) / span * steps))
+            value = values.get(identifier)
+            text = str(int(value)) if isinstance(value, float) and value.is_integer() else str(value)
+            if value is None:
+                text = "—"
+            display.setDigitCount(max(5, len(text)))
+            display.display(text if value is not None else "-")
+            display.setToolTip(text)
+            display.setAccessibleName(f"{name} value {text}")
+        actions = dict(self.state.profile.pads)
+        for slot, pad in self.pads.items():
+            action = actions.get(slot)
+            pad.setText(slot.title())
+            pad.setToolTip(action or "Unmapped")
+            pad.setAccessibleDescription(action or "Unmapped")
+            pad.setEnabled(bool(action) and panel_enabled and not self.state.replaying)
 
     def _refresh_profile_shortcuts(self):
         bindings = self.state.profile.bindings
@@ -315,9 +389,10 @@ class Window(QMainWindow):
             shortcut.setEnabled(enabled)
 
     def _focus_seed(self):
-        field = self.fields["generation.seed"]
-        field.setFocus()
-        field.selectAll()
+        for _, dial, _ in self.knobs.values():
+            if dial.property("parameter") == "generation.seed":
+                dial.setFocus()
+                return
 
     def _send_profile_key(self, key):
         if self.state.replaying:
@@ -331,8 +406,32 @@ class Window(QMainWindow):
         self.worker.commands.put_nowait(command)
         self._update_panel()
 
-    def _control(self, identifier):
-        value = self.fields[identifier].text()
+    def _step_knob(self, slot, step):
+        dial = self.knobs[slot][1]
+        identifier = dial.property("parameter")
+        if identifier:
+            descriptor = PARAMETERS[identifier]
+            current = getattr(self.state.project, descriptor.attribute)
+            value = min(descriptor.maximum, max(descriptor.minimum, current + step))
+            if value != current:
+                self._control(identifier, str(value))
+
+    def _turn_knob(self, slot, position):
+        dial = self.knobs[slot][1]
+        identifier = dial.property("parameter")
+        if identifier:
+            descriptor = PARAMETERS[identifier]
+            span = descriptor.maximum - descriptor.minimum
+            steps = dial.maximum()
+            offset = (position * int(span) + steps // 2) // steps
+            self._control(identifier, str(descriptor.minimum + offset))
+
+    def _press_pad(self, slot):
+        action = dict(self.state.profile.pads).get(slot)
+        if action:
+            self._submit("pad", lambda model: model.transport.control(action))
+
+    def _control(self, identifier, value):
         def apply(model):
             model.transport.control(f"set {identifier} {value}")
             if identifier == "generation.seed" and model.transport.running:

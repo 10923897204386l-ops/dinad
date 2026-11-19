@@ -22,6 +22,7 @@ M2 closes with the nine increments above. Remaining composition backlog includes
 
 ## M3 — Fixed performance interface
 First increment: [panel layout and readability](m3-1.md). Fedora usability check pending.
+Second increment: [fixed performance controls](m3-2.md). Fedora usability check pending.
 Polish the PySide6/Qt Widgets implementation into the predominantly static virtual hardware panel: knobs, pads, displays, modal colour, contextual banks, keyboard-first navigation, command bar and **polished** drop-down project editor (functional F12 editor introduced in M1.4). The front end remains exclusively DINAD; never embed or launch plugin-specific editors. Improve accessibility, control feedback, undo and transactional configuration.
 
 ## M4 — Instruments and sound palette

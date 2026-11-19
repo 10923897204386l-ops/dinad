@@ -2,5 +2,6 @@
 Type=Application
 Name=DINAD
 Exec=dinad-desktop
+Icon=io.github.dinad.Dinad
 Terminal=false
 Categories=AudioVideo;Audio;

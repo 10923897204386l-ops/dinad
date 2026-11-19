@@ -62,9 +62,19 @@ class Project:
                 for identifier, parameter in PARAMETERS.items()}
 
 
+KNOB_SLOTS = tuple(f"knob{index}" for index in range(1, 8))
+PAD_SLOTS = tuple(f"pad{index}" for index in range(1, 5))
+DEFAULT_KNOBS = tuple(zip(KNOB_SLOTS, (
+    "composition.anchor", "composition.voice_space", "composition.tension",
+    "transport.tempo_bpm", "generation.form", "generation.motif", "generation.seed",
+)))
+
+
 @dataclass(frozen=True)
 class Profile:
     bindings: tuple[tuple[str, str], ...] = ()
+    knobs: tuple[tuple[str, str], ...] = DEFAULT_KNOBS
+    pads: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         from dinad.controls import parse_action
@@ -87,6 +97,20 @@ class Profile:
                 raise ValueError(f"binding {key!r}: {exc}") from exc
         object.__setattr__(self, "bindings", bindings)
 
+        for name, slots in (("knobs", KNOB_SLOTS), ("pads", PAD_SLOTS)):
+            pairs = tuple(tuple(pair) for pair in getattr(self, name))
+            seen = set()
+            for slot, target in pairs:
+                if slot not in slots or slot in seen:
+                    raise ValueError(f"invalid or duplicate {name} slot {slot!r}")
+                seen.add(slot)
+                if name == "knobs":
+                    if not isinstance(target, str) or target not in PARAMETERS:
+                        raise ValueError(f"{slot}: unknown semantic parameter {target!r}")
+                elif parse_action(target).kind not in ("set", "adjust", "undo"):
+                    raise ValueError(f"{slot}: expected set, adjust or undo")
+            object.__setattr__(self, name, pairs)
+
     def command_for(self, key: str) -> str:
         for candidate, command in self.bindings:
             if candidate == key:
@@ -94,7 +118,12 @@ class Profile:
         raise ValueError(f"unmapped profile key: {key}")
 
     def snapshot(self) -> dict:
-        return {"schema_version": 1, "bindings": dict(self.bindings)}
+        snapshot = {"schema_version": 1, "bindings": dict(self.bindings)}
+        if self.knobs != DEFAULT_KNOBS:
+            snapshot["knobs"] = dict(self.knobs)
+        if self.pads:
+            snapshot["pads"] = dict(self.pads)
+        return snapshot
 
 
 def _table(value: object, allowed: set[str], path: str) -> dict:
@@ -139,11 +168,13 @@ def load_project(path: Path) -> Project:
 
 def load_profile(path: Path) -> Profile:
     path = Path(path)
-    document = _read(path, {"bindings"})
+    document = _read(path, {"bindings", "knobs", "pads"})
     try:
         bindings = document.get("bindings", {})
         if not isinstance(bindings, dict):
             raise ValueError("bindings must be a table")
-        return Profile(tuple(bindings.items()))
+        knobs = _table(document.get("knobs", dict(DEFAULT_KNOBS)), set(KNOB_SLOTS), "knobs")
+        pads = _table(document.get("pads", {}), set(PAD_SLOTS), "pads")
+        return Profile(tuple(bindings.items()), tuple(knobs.items()), tuple(pads.items()))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{path}: bindings: {exc}") from exc
